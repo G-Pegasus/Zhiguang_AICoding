@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: zhiguang-auth
+  datasource:
+    url: jdbc:mysql://81.70.43.139:3306/zhiguang?allowPublicKeyRetrieval=true&sslMode=DISABLED
+    username: root
+    password: Liutongji8512.
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  data:
+    redis:
+      host: 81.70.43.139
+      port: 6379
+
+mybatis:
+  mapper-locations: classpath*:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+auth:
+  jwt:
+    issuer: zhiguang
+    key-id: zhiguang-key
+    private-key: classpath:keys/private.pem
+    public-key: classpath:keys/public.pem
+    access-token-ttl: PT15M
+    refresh-token-ttl: P7D
+  verification:
+    code-length: 6
+    ttl: PT5M
+    max-attempts: 5
+    send-interval: PT60S
+    daily-limit: 10
+  password:
+    bcrypt-strength: 12
+    min-length: 8
+
+logging:
+  level:
+    root: INFO
+    org.example: DEBUG
