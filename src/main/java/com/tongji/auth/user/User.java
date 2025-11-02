@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 @Data
 @Builder
@@ -20,6 +21,10 @@ public class User {
     private String nickname;
     private String avatar;
     private String bio;
+    private String zgId;
+    private String gender;
+    private LocalDate birthday;
+    private String school;
     private String tagsJson;
     private Instant createdAt;
     private Instant updatedAt;

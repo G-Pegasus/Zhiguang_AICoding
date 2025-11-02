@@ -19,4 +19,8 @@ public interface UserMapper {
     User findById(@Param("id") Long id);
 
     void updatePassword(@Param("id") Long id, @Param("passwordHash") String passwordHash);
+
+    void updateProfile(User user);
+
+    boolean existsByZgIdExceptId(@Param("zgId") String zgId, @Param("excludeId") Long excludeId);
 }
