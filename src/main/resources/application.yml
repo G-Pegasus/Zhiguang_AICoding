@@ -44,8 +44,8 @@ logging:
 
 oss:
   endpoint: oss-cn-beijing.aliyuncs.com
-  access-key-id: LTAI5tQXq9AMvFp6fRtNBBWi
-  access-key-secret: TuASBIN5kH1PALimW1lbJFO4jJ1FTf
+  access-key-id:
+  access-key-secret:
   bucket: zhiguangapp
   public-domain: ${OSS_PUBLIC_DOMAIN:}
   folder: avatars
