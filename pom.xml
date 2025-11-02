@@ -93,7 +93,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>org.example.ZhiGuangApplication</mainClass>
+                    <mainClass>com.tongji.ZhiGuangApplication</mainClass>
                 </configuration>
             </plugin>
         </plugins>
