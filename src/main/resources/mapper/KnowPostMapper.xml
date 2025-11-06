@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tongji.knowpost.mapper.KnowPostMapper">
+
+    <resultMap id="KnowPostResultMap" type="com.tongji.knowpost.model.KnowPost">
+        <id property="id" column="id" />
+        <result property="tagId" column="tag_id" />
+        <result property="tags" column="tags" />
+        <result property="title" column="title" />
+        <result property="contentUrl" column="content_url" />
+        <result property="contentObjectKey" column="content_object_key" />
+        <result property="contentEtag" column="content_etag" />
+        <result property="contentSize" column="content_size" />
+        <result property="contentSha256" column="content_sha256" />
+        <result property="creatorId" column="creator_id" />
+        <result property="isTop" column="is_top" />
+        <result property="type" column="type" />
+        <result property="visible" column="visible" />
+        <result property="imgUrls" column="img_urls" />
+        <result property="videoUrl" column="video_url" />
+        <result property="status" column="status" />
+        <result property="createTime" column="create_time" />
+        <result property="updateTime" column="update_time" />
+        <result property="publishTime" column="publish_time" />
+    </resultMap>
+
+    <insert id="insertDraft" parameterType="com.tongji.knowpost.model.KnowPost">
+        INSERT INTO know_posts (
+            id, creator_id, status, type, visible, is_top, create_time, update_time
+        ) VALUES (
+            #{id}, #{creatorId}, #{status}, #{type}, #{visible}, #{isTop}, #{createTime}, #{updateTime}
+        )
+    </insert>
+
+    <select id="findById" parameterType="long" resultMap="KnowPostResultMap">
+        SELECT * FROM know_posts WHERE id = #{id}
+    </select>
+
+    <update id="updateContent" parameterType="com.tongji.knowpost.model.KnowPost">
+        UPDATE know_posts
+        <set>
+            <if test="contentUrl != null">content_url = #{contentUrl},</if>
+            <if test="contentObjectKey != null">content_object_key = #{contentObjectKey},</if>
+            <if test="contentEtag != null">content_etag = #{contentEtag},</if>
+            <if test="contentSize != null">content_size = #{contentSize},</if>
+            <if test="contentSha256 != null">content_sha256 = #{contentSha256},</if>
+            update_time = #{updateTime}
+        </set>
+        WHERE id = #{id} AND creator_id = #{creatorId}
+    </update>
+
+    <update id="updateMetadata" parameterType="com.tongji.knowpost.model.KnowPost">
+        UPDATE know_posts
+        <set>
+            <if test="title != null">title = #{title},</if>
+            <if test="tagId != null">tag_id = #{tagId},</if>
+            <if test="tags != null">tags = #{tags},</if>
+            <if test="imgUrls != null">img_urls = #{imgUrls},</if>
+            <if test="visible != null">visible = #{visible},</if>
+            <if test="isTop != null">is_top = #{isTop},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="type != null">type = #{type},</if>
+            update_time = #{updateTime}
+        </set>
+        WHERE id = #{id} AND creator_id = #{creatorId}
+    </update>
+
+    <update id="publish">
+        UPDATE know_posts
+        SET status = 'published', publish_time = NOW(), update_time = NOW()
+        WHERE id = #{id} AND creator_id = #{creatorId}
+    </update>
+
+    <!-- 设置置顶 -->
+    <update id="updateTop">
+        UPDATE know_posts
+        SET is_top = #{isTop}, update_time = NOW()
+        WHERE id = #{id} AND creator_id = #{creatorId}
+    </update>
+
+    <!-- 设置可见性 -->
+    <update id="updateVisibility">
+        UPDATE know_posts
+        SET visible = #{visible}, update_time = NOW()
+        WHERE id = #{id} AND creator_id = #{creatorId}
+    </update>
+
+    <!-- 软删除（保留记录，仅状态修改） -->
+    <update id="softDelete">
+        UPDATE know_posts
+        SET status = 'deleted', update_time = NOW()
+        WHERE id = #{id} AND creator_id = #{creatorId}
+    </update>
+
+    <!-- 首页 Feed 列表查询（公开可见 + 已发布），置顶优先，其次按发布时间倒序 -->
+    <select id="listFeedPublic" resultType="com.tongji.knowpost.model.KnowPostFeedRow">
+        SELECT
+            p.id,
+            p.title,
+            p.description,
+            p.tags,
+            p.img_urls AS imgUrls,
+            u.avatar AS authorAvatar,
+            u.nickname AS authorNickname,
+            u.tags_json AS authorTagJson,
+            p.publish_time AS publishTime,
+            p.is_top AS isTop
+        FROM know_posts p
+        JOIN users u ON p.creator_id = u.id
+        WHERE p.status = 'published' AND p.visible = 'public'
+        ORDER BY p.is_top DESC, p.publish_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 我的知文列表查询（当前用户的已发布内容），置顶优先，其次按发布时间倒序 -->
+    <select id="listMyPublished" resultType="com.tongji.knowpost.model.KnowPostFeedRow">
+        SELECT
+            p.id,
+            p.title,
+            p.description,
+            p.tags,
+            p.img_urls AS imgUrls,
+            u.avatar AS authorAvatar,
+            u.nickname AS authorNickname,
+            u.tags_json AS authorTagJson,
+            p.publish_time AS publishTime,
+            p.is_top AS isTop
+        FROM know_posts p
+        JOIN users u ON p.creator_id = u.id
+        WHERE p.creator_id = #{creatorId} AND p.status = 'published'
+        ORDER BY p.is_top DESC, p.publish_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 详情查询（含作者信息） -->
+    <select id="findDetailById" parameterType="long" resultType="com.tongji.knowpost.model.KnowPostDetailRow">
+        SELECT
+            p.id,
+            p.creator_id AS creatorId,
+            p.title,
+            p.description,
+            p.tags,
+            p.img_urls AS imgUrls,
+            p.content_url AS contentUrl,
+            u.avatar AS authorAvatar,
+            u.nickname AS authorNickname,
+            u.tags_json AS authorTagJson,
+            p.publish_time AS publishTime,
+            p.is_top AS isTop,
+            p.visible,
+            p.type,
+            p.status
+        FROM know_posts p
+        JOIN users u ON p.creator_id = u.id
+        WHERE p.id = #{id}
+    </select>
+
+</mapper>

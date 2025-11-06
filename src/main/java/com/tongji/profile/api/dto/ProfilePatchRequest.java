@@ -16,5 +16,6 @@ public record ProfilePatchRequest(
         @Pattern(regexp = "(?i)MALE|FEMALE|OTHER|UNKNOWN", message = "性别取值为 MALE/FEMALE/OTHER/UNKNOWN") String gender,
         @PastOrPresent(message = "生日不能晚于今天") LocalDate birthday,
         @Pattern(regexp = "^[a-zA-Z0-9_]{4,32}$", message = "知光号仅支持字母、数字、下划线，长度 4-32") String zgId,
-        @Size(max = 128, message = "学校名称长度不能超过 128") String school
+        @Size(max = 128, message = "学校名称长度不能超过 128") String school,
+        String tagJson
 ){ }

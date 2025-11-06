@@ -1,5 +1,7 @@
 package com.tongji.auth.api.dto;
 
+import java.time.LocalDate;
+
 /**
  * 认证用户响应。
  * <p>
@@ -10,6 +12,11 @@ public record AuthUserResponse(
         String nickname,
         String avatar,
         String phone,
-        String email
+        String zhId,
+        LocalDate birthday,
+        String school,
+        String bio,
+        String gender,
+        String tagJson
 ) {
 }

@@ -33,7 +33,8 @@ public class ProfileService {
         }
 
         boolean hasAnyField = req.nickname() != null || req.bio() != null || req.gender() != null
-                || req.birthday() != null || req.zgId() != null || req.school() != null;
+                || req.birthday() != null || req.zgId() != null || req.school() != null
+                || req.tagJson() != null;
 
         if (!hasAnyField) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "未提交任何更新字段");
@@ -75,6 +76,9 @@ public class ProfileService {
         if (req.school() != null) {
             patch.setSchool(req.school().trim());
         }
+        if (req.tagJson() != null) {
+            patch.setTagsJson(req.tagJson());
+        }
         return patch;
     }
 
@@ -105,7 +109,8 @@ public class ProfileService {
                 user.getBirthday(),
                 user.getSchool(),
                 user.getPhone(),
-                user.getEmail()
+                user.getEmail(),
+                user.getTagsJson()
         );
     }
 }

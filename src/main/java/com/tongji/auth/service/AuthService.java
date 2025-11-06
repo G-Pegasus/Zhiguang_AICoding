@@ -377,7 +377,18 @@ public class AuthService {
      * @return 用户响应。
      */
     private AuthUserResponse mapUser(User user) {
-        return new AuthUserResponse(user.getId(), user.getNickname(), user.getAvatar(), user.getPhone(), user.getEmail());
+        return new AuthUserResponse(
+                user.getId(),
+                user.getNickname(),
+                user.getAvatar(),
+                user.getPhone(),
+                user.getZgId(),
+                user.getBirthday(),
+                user.getSchool(),
+                user.getBio(),
+                user.getGender(),
+                user.getTagsJson()
+        );
     }
 
     /**
