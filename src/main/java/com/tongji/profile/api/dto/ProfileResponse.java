@@ -12,5 +12,6 @@ public record ProfileResponse(
         LocalDate birthday,
         String school,
         String phone,
-        String email
+        String email,
+        String tagJson
 ) {}
