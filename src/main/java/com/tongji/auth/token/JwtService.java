@@ -2,7 +2,7 @@ package com.tongji.auth.token;
 
 import lombok.RequiredArgsConstructor;
 import com.tongji.auth.config.AuthProperties;
-import com.tongji.auth.user.User;
+import com.tongji.user.domain.User;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtDecoder;

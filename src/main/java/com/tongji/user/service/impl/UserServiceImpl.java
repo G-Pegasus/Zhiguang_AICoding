@@ -1,4 +1,4 @@
-package com.tongji.auth.user;
+package com.tongji.user.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -7,9 +7,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.Optional;
 
+import com.tongji.user.service.UserService;
+import com.tongji.user.mapper.UserMapper;
+import com.tongji.user.domain.User;
+
 @Service
 @RequiredArgsConstructor
-public class UserService {
+public class UserServiceImpl implements UserService {
 
     private final UserMapper userMapper;
 

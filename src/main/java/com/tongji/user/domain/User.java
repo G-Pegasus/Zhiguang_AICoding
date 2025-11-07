@@ -1,4 +1,4 @@
-package com.tongji.auth.user;
+package com.tongji.user.domain;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

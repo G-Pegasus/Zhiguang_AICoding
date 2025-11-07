@@ -2,7 +2,7 @@ package com.tongji.auth.token;
 
 import com.tongji.auth.config.AuthConfiguration;
 import com.tongji.auth.config.AuthProperties;
-import com.tongji.auth.user.User;
+import com.tongji.user.domain.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;

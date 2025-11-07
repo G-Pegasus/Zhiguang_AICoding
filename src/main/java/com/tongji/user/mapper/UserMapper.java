@@ -1,7 +1,8 @@
-package com.tongji.auth.user;
+package com.tongji.user.mapper;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import com.tongji.user.domain.User;
 
 @Mapper
 public interface UserMapper {
