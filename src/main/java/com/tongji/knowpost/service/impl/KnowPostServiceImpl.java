@@ -1,5 +1,6 @@
 package com.tongji.knowpost.service.impl;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.tongji.knowpost.service.KnowPostService;
 import com.tongji.knowpost.service.FeedCacheService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -11,13 +12,20 @@ import com.tongji.knowpost.mapper.KnowPostMapper;
 import com.tongji.knowpost.model.KnowPost;
 import com.tongji.knowpost.model.KnowPostDetailRow;
 import com.tongji.knowpost.api.dto.KnowPostDetailResponse;
+import com.tongji.counter.service.CounterService;
 import com.tongji.storage.config.OssProperties;
+import com.tongji.cache.hotkey.HotKeyDetector;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +36,12 @@ public class KnowPostServiceImpl implements KnowPostService {
     private final ObjectMapper objectMapper;
     private final OssProperties ossProperties;
     private final FeedCacheService feedCacheService;
+    private final CounterService counterService;
+    private final StringRedisTemplate redis;
+    private final HotKeyDetector hotKey;
+    private static final Logger log = LoggerFactory.getLogger(KnowPostServiceImpl.class);
+    private static final int DETAIL_LAYOUT_VER = 1;
+    private final java.util.concurrent.ConcurrentHashMap<String, Object> singleFlight = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * 创建草稿并返回新 ID。
@@ -58,6 +72,7 @@ public class KnowPostServiceImpl implements KnowPostService {
         // 缓存双删（更新前先删除）
         feedCacheService.deleteAllFeedCaches();
         feedCacheService.deleteMyFeedCaches(creatorId);
+        redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
         KnowPost post = KnowPost.builder()
                 .id(id)
                 .creatorId(creatorId)
@@ -75,6 +90,7 @@ public class KnowPostServiceImpl implements KnowPostService {
         // 更新后再次删除，避免并发下写回旧值
         feedCacheService.doubleDeleteAll(200);
         feedCacheService.doubleDeleteMy(creatorId, 200);
+        redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
     }
 
     /**
@@ -85,6 +101,7 @@ public class KnowPostServiceImpl implements KnowPostService {
         // 缓存双删（更新前先删除）
         feedCacheService.deleteAllFeedCaches();
         feedCacheService.deleteMyFeedCaches(creatorId);
+        redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
         KnowPost post = KnowPost.builder()
                 .id(id)
                 .creatorId(creatorId)
@@ -107,6 +124,7 @@ public class KnowPostServiceImpl implements KnowPostService {
         // 更新后再次删除，避免并发下写回旧值
         feedCacheService.doubleDeleteAll(200);
         feedCacheService.doubleDeleteMy(creatorId, 200);
+        redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
     }
 
     /**
@@ -117,6 +135,7 @@ public class KnowPostServiceImpl implements KnowPostService {
         // 缓存双删（更新前先删除）
         feedCacheService.deleteAllFeedCaches();
         feedCacheService.deleteMyFeedCaches(creatorId);
+        redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
         int updated = mapper.publish(id, creatorId);
         if (updated == 0) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "草稿不存在或无权限");
@@ -124,6 +143,7 @@ public class KnowPostServiceImpl implements KnowPostService {
         // 更新后再次删除，避免并发下写回旧值
         feedCacheService.doubleDeleteAll(200);
         feedCacheService.doubleDeleteMy(creatorId, 200);
+        redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
     }
 
     /**
@@ -133,12 +153,14 @@ public class KnowPostServiceImpl implements KnowPostService {
     public void updateTop(long creatorId, long id, boolean isTop) {
         feedCacheService.deleteAllFeedCaches();
         feedCacheService.deleteMyFeedCaches(creatorId);
+        redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
         int updated = mapper.updateTop(id, creatorId, isTop);
         if (updated == 0) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "草稿不存在或无权限");
         }
         feedCacheService.doubleDeleteAll(200);
         feedCacheService.doubleDeleteMy(creatorId, 200);
+        redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
     }
 
     /**
@@ -151,12 +173,14 @@ public class KnowPostServiceImpl implements KnowPostService {
         }
         feedCacheService.deleteAllFeedCaches();
         feedCacheService.deleteMyFeedCaches(creatorId);
+        redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
         int updated = mapper.updateVisibility(id, creatorId, visible);
         if (updated == 0) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "草稿不存在或无权限");
         }
         feedCacheService.doubleDeleteAll(200);
         feedCacheService.doubleDeleteMy(creatorId, 200);
+        redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
     }
 
     /**
@@ -166,12 +190,14 @@ public class KnowPostServiceImpl implements KnowPostService {
     public void delete(long creatorId, long id) {
         feedCacheService.deleteAllFeedCaches();
         feedCacheService.deleteMyFeedCaches(creatorId);
+        redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
         int updated = mapper.softDelete(id, creatorId);
         if (updated == 0) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "草稿不存在或无权限");
         }
         feedCacheService.doubleDeleteAll(200);
         feedCacheService.doubleDeleteMy(creatorId, 200);
+        redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
     }
 
     private boolean isValidVisible(String visible) {
@@ -206,46 +232,188 @@ public class KnowPostServiceImpl implements KnowPostService {
      */
     @Transactional(readOnly = true)
     public KnowPostDetailResponse getDetail(long id, Long currentUserIdNullable) {
-        KnowPostDetailRow row = mapper.findDetailById(id);
-        if (row == null || "deleted".equals(row.getStatus())) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "内容不存在");
+        String pageKey = "knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER;
+        String cached = redis.opsForValue().get(pageKey);
+        if (cached != null) {
+            if ("NULL".equals(cached)) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "内容不存在");
+            }
+            try {
+                KnowPostDetailResponse base = objectMapper.readValue(cached, KnowPostDetailResponse.class);
+                hotKey.record(pageKey);
+                maybeExtendTtlDetail(pageKey);
+                String cntKey = "feed:count:" + id;
+                String cntJson = redis.opsForValue().get(cntKey);
+                Long likeCount = base.likeCount();
+                Long favoriteCount = base.favoriteCount();
+                if (cntJson != null) {
+                    try {
+                        Map<String, Long> cm = objectMapper.readValue(cntJson, new TypeReference<Map<String, Long>>(){});
+                        likeCount = cm.getOrDefault("like", likeCount == null ? 0L : likeCount);
+                        favoriteCount = cm.getOrDefault("fav", favoriteCount == null ? 0L : favoriteCount);
+                    } catch (Exception ignored) {}
+                }
+                boolean liked = currentUserIdNullable != null && counterService.isLiked("knowpost", String.valueOf(id), currentUserIdNullable);
+                boolean faved = currentUserIdNullable != null && counterService.isFaved("knowpost", String.valueOf(id), currentUserIdNullable);
+                log.info("detail source=page key={}", pageKey);
+                return new KnowPostDetailResponse(
+                        String.valueOf(id),
+                        base.title(),
+                        base.description(),
+                        base.contentUrl(),
+                        base.images(),
+                        base.tags(),
+                        base.authorId(),
+                        base.authorAvatar(),
+                        base.authorNickname(),
+                        base.authorTagJson(),
+                        likeCount,
+                        favoriteCount,
+                        liked,
+                        faved,
+                        base.isTop(),
+                        base.visible(),
+                        base.type(),
+                        base.publishTime()
+                );
+            } catch (Exception ignored) {}
         }
 
-        boolean isPublic = "published".equals(row.getStatus()) && "public".equals(row.getVisible());
-        boolean isOwner = currentUserIdNullable != null && row.getCreatorId() != null && currentUserIdNullable.equals(row.getCreatorId());
-        if (!isPublic && !isOwner) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "无权限查看");
+        Object lock = singleFlight.computeIfAbsent(pageKey, k -> new Object());
+        synchronized (lock) {
+            String again = redis.opsForValue().get(pageKey);
+            if (again != null && !"NULL".equals(again)) {
+                try {
+                    KnowPostDetailResponse base = objectMapper.readValue(again, KnowPostDetailResponse.class);
+                    hotKey.record(pageKey);
+                    maybeExtendTtlDetail(pageKey);
+                    String cntKey = "feed:count:" + id;
+                    String cntJson = redis.opsForValue().get(cntKey);
+                    Long likeCount = base.likeCount();
+                    Long favoriteCount = base.favoriteCount();
+                    if (cntJson != null) {
+                        try {
+                            Map<String, Long> cm = objectMapper.readValue(cntJson, new TypeReference<Map<String, Long>>(){});
+                            likeCount = cm.getOrDefault("like", likeCount == null ? 0L : likeCount);
+                            favoriteCount = cm.getOrDefault("fav", favoriteCount == null ? 0L : favoriteCount);
+                        } catch (Exception ignored) {}
+                    }
+                    boolean liked = currentUserIdNullable != null && counterService.isLiked("knowpost", String.valueOf(id), currentUserIdNullable);
+                    boolean faved = currentUserIdNullable != null && counterService.isFaved("knowpost", String.valueOf(id), currentUserIdNullable);
+                    log.info("detail source=page(after-flight) key={}", pageKey);
+                    singleFlight.remove(pageKey);
+                    return new KnowPostDetailResponse(
+                            String.valueOf(id),
+                            base.title(),
+                            base.description(),
+                            base.contentUrl(),
+                            base.images(),
+                            base.tags(),
+                            base.authorId(),
+                            base.authorAvatar(),
+                            base.authorNickname(),
+                            base.authorTagJson(),
+                            likeCount,
+                            favoriteCount,
+                            liked,
+                            faved,
+                            base.isTop(),
+                            base.visible(),
+                            base.type(),
+                            base.publishTime()
+                    );
+                } catch (Exception ignored) {}
+            }
+
+            KnowPostDetailRow row = mapper.findDetailById(id);
+            if (row == null || "deleted".equals(row.getStatus())) {
+                redis.opsForValue().set(pageKey, "NULL", java.time.Duration.ofSeconds(30 + java.util.concurrent.ThreadLocalRandom.current().nextInt(31)));
+                singleFlight.remove(pageKey);
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "内容不存在");
+            }
+
+            boolean isPublic = "published".equals(row.getStatus()) && "public".equals(row.getVisible());
+            boolean isOwner = currentUserIdNullable != null && row.getCreatorId() != null && currentUserIdNullable.equals(row.getCreatorId());
+            if (!isPublic && !isOwner) {
+                singleFlight.remove(pageKey);
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "无权限查看");
+            }
+
+            List<String> images = parseStringArray(row.getImgUrls());
+            List<String> tags = parseStringArray(row.getTags());
+            Map<String, Long> counts = counterService.getCounts("knowpost", String.valueOf(row.getId()), List.of("like", "fav"));
+            Long likeCount = counts.getOrDefault("like", 0L);
+            Long favoriteCount = counts.getOrDefault("fav", 0L);
+            KnowPostDetailResponse resp = new KnowPostDetailResponse(
+                    String.valueOf(row.getId()),
+                    row.getTitle(),
+                    row.getDescription(),
+                    row.getContentUrl(),
+                    images,
+                    tags,
+                    String.valueOf(row.getCreatorId()),
+                    row.getAuthorAvatar(),
+                    row.getAuthorNickname(),
+                    row.getAuthorTagJson(),
+                    likeCount,
+                    favoriteCount,
+                    null,
+                    null,
+                    row.getIsTop(),
+                    row.getVisible(),
+                    row.getType(),
+                    row.getPublishTime()
+            );
+            try {
+                String json = objectMapper.writeValueAsString(resp);
+                int baseTtl = 60;
+                int jitter = java.util.concurrent.ThreadLocalRandom.current().nextInt(30);
+                int target = hotKey.ttlForPublic(baseTtl, pageKey);
+                redis.opsForValue().set(pageKey, json, java.time.Duration.ofSeconds(Math.max(target, baseTtl + jitter)));
+                log.info("detail source=db key={}", pageKey);
+            } catch (Exception ignored) {}
+            boolean liked = currentUserIdNullable != null && counterService.isLiked("knowpost", String.valueOf(row.getId()), currentUserIdNullable);
+            boolean faved = currentUserIdNullable != null && counterService.isFaved("knowpost", String.valueOf(row.getId()), currentUserIdNullable);
+            singleFlight.remove(pageKey);
+            return new KnowPostDetailResponse(
+                    String.valueOf(row.getId()),
+                    resp.title(),
+                    resp.description(),
+                    resp.contentUrl(),
+                    resp.images(),
+                    resp.tags(),
+                    resp.authorId(),
+                    resp.authorAvatar(),
+                    resp.authorNickname(),
+                    resp.authorTagJson(),
+                    resp.likeCount(),
+                    resp.favoriteCount(),
+                    liked,
+                    faved,
+                    resp.isTop(),
+                    resp.visible(),
+                    resp.type(),
+                    resp.publishTime()
+            );
         }
-
-        List<String> images = parseStringArray(row.getImgUrls());
-        List<String> tags = parseStringArray(row.getTags());
-
-        return new KnowPostDetailResponse(
-                String.valueOf(row.getId()),
-                row.getTitle(),
-                row.getDescription(),
-                row.getContentUrl(),
-                images,
-                tags,
-                row.getAuthorAvatar(),
-                row.getAuthorNickname(),
-                row.getAuthorTagJson(),
-                0L,
-                0L,
-                row.getIsTop(),
-                row.getVisible(),
-                row.getType(),
-                row.getPublishTime()
-        );
     }
 
-    private java.util.List<String> parseStringArray(String json) {
-        if (json == null || json.isBlank()) return java.util.Collections.emptyList();
+    private void maybeExtendTtlDetail(String key) {
+        int baseTtl = 60;
+        int target = hotKey.ttlForPublic(baseTtl, key);
+        Long currentTtl = redis.getExpire(key);
+        if (currentTtl == null || currentTtl < target) {
+            redis.expire(key, java.time.Duration.ofSeconds(target));
+        }
+    }
+
+    private List<String> parseStringArray(String json) {
+        if (json == null || json.isBlank()) return Collections.emptyList();
         try {
-            return objectMapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<>() {
+            return objectMapper.readValue(json, new TypeReference<>() {
             });
         } catch (Exception e) {
-            return java.util.Collections.emptyList();
+            return Collections.emptyList();
         }
     }
 }

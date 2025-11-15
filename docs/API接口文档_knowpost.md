@@ -237,9 +237,13 @@ N[注意：需在 OSS CORS 暴露 ETag] --- D
           "description": "掌握 Python 的核心能力…",
           "coverImage": "https://cdn.example.com/images/a.jpg",
           "tags": ["Python", "编程"],
-          "authorAvatar": "https://cdn.example.com/avatars/u1.png",
-          "authorNickname": "张老师",
-          "tagJson": "[\"Python\",\"数据分析\"]"
+      "authorAvatar": "https://cdn.example.com/avatars/u1.png",
+      "authorNickname": "张老师",
+      "tagJson": "[\"Python\",\"数据分析\"]",
+      "likeCount": 120,
+      "favoriteCount": 56,
+      "liked": false,
+      "faved": false
         }
       ],
       "page": 1,
@@ -249,6 +253,9 @@ N[注意：需在 OSS CORS 暴露 ETag] --- D
     ```
   - 说明：
     - 列表仅返回公开（`visible=public`）且已发布（`status=published`）的内容；置顶在前，其次按 `publish_time` 倒序。
+    - 每条 `items` 增加 `likeCount`、`favoriteCount`、`liked`、`faved` 字段：
+      - `likeCount` / `favoriteCount` 为全局计数；与基础列表一并缓存（约 60s + 随机抖动），可能存在秒级延迟。
+      - `liked` / `faved` 为用户维度状态；若未登录则返回 `false`；公开 Feed 中该状态不参与缓存，仅在返回时覆盖，避免不同用户相互干扰。
 
 ---
 
@@ -270,8 +277,10 @@ N[注意：需在 OSS CORS 暴露 ETag] --- D
       "authorAvatar": "https://cdn.example.com/avatars/u1.png",
       "authorNickname": "王经理",
       "authorTagJson": "[\"商业\",\"创业\"]",
-      "likeCount": 0,
-      "favoriteCount": 0,
+      "likeCount": 120,
+      "favoriteCount": 56,
+      "liked": false,
+      "faved": false,
       "isTop": false,
       "visible": "public",
       "type": "image_text",
@@ -280,7 +289,8 @@ N[注意：需在 OSS CORS 暴露 ETag] --- D
     ```
   - 说明：
     - `images` 返回该知文所有图片，便于前端左右滑动预览；取自 `img_urls`。
-    - `likeCount` 与 `favoriteCount` 字段预留，当前返回 `0`；后续接入点赞/收藏系统时替换为真实值。
+    - `likeCount` 与 `favoriteCount` 为真实计数；计数来源于计数模块，读写采用一致性控制，可能存在秒级延迟。
+    - `liked` / `faved` 为用户维度状态；未登录时返回 `false`；登录时依据位图实时判断，存在毫秒级读取开销。
     - 非公开内容访问规则：若当前内容非 `public` 或未发布，仅作者本人可访问；否则返回错误。
 
 ---
@@ -301,9 +311,13 @@ N[注意：需在 OSS CORS 暴露 ETag] --- D
           "description": "摘要…",
           "coverImage": "https://cdn.example.com/images/a.jpg",
           "tags": ["Java","后端"],
-          "authorAvatar": "https://cdn.example.com/avatars/me.png",
-          "authorNickname": "我",
-          "tagJson": "[\"Java\",\"后端\"]"
+      "authorAvatar": "https://cdn.example.com/avatars/me.png",
+      "authorNickname": "我",
+      "tagJson": "[\"Java\",\"后端\"]",
+      "likeCount": 120,
+      "favoriteCount": 56,
+      "liked": true,
+      "faved": false
         }
       ],
       "page": 1,
@@ -316,7 +330,7 @@ N[注意：需在 OSS CORS 暴露 ETag] --- D
     - 排序规则：置顶在前（`is_top`），其次按 `publish_time` 倒序。
     - 性能优化：服务端对用户维度列表做短期旁路缓存（约 30–50 秒随机抖动）；数据库建议建立索引 `(creator_id, status, publish_time)`。
     - `coverImage` 取自 `imgUrls` 的第一张图片；`tags` 为字符串数组；`tagJson` 为作者的领域标签（JSON 字符串，直接来自 `users.tags_json`）。
-    - 服务端采用 Redis 旁路缓存，键格式：`feed:public:{size}:{page}`；缓存 TTL 为 `60s + 随机抖动(0–30s)` 以降低缓存雪崩风险。
+    - 用户维度列表缓存键格式：`feed:mine:{userId}:{size}:{page}`；缓存 TTL 为 `30s + 随机抖动(0–20s)`；计数与列表一并缓存；`liked`/`faved` 也随响应一并缓存（用户维度），但可能因操作造成 30s 内的短暂延迟。
     - 为保证一致性，写操作（内容确认、元数据更新、发布）在数据库更新前后对 `feed:*` 做缓存双删：更新前删除一次、更新后延迟约 200ms 再删除一次，避免并发写回旧值。
 
 ---

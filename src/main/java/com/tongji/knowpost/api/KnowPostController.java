@@ -113,8 +113,10 @@ public class KnowPostController {
      */
     @GetMapping("/feed")
     public FeedPageResponse feed(@RequestParam(value = "page", defaultValue = "1") int page,
-                                 @RequestParam(value = "size", defaultValue = "20") int size) {
-        return feedService.getPublicFeed(page, size);
+                                 @RequestParam(value = "size", defaultValue = "20") int size,
+                                 @AuthenticationPrincipal Jwt jwt) {
+        Long userId = (jwt == null) ? null : jwtService.extractUserId(jwt);
+        return feedService.getPublicFeed(page, size, userId);
     }
 
     /**
