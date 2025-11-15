@@ -1,5 +1,6 @@
-package com.tongji.llm;
+package com.tongji.llm.service.impl;
 
+import com.tongji.llm.service.KnowPostDescriptionService;
 import com.tongji.auth.exception.BusinessException;
 import com.tongji.auth.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +12,7 @@ import java.text.Normalizer;
 
 @Service
 @RequiredArgsConstructor
-public class KnowPostDescriptionService {
+public class KnowPostDescriptionServiceImpl implements KnowPostDescriptionService {
 
     private final ChatClient chatClient;
 

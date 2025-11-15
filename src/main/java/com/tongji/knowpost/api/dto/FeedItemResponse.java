@@ -13,5 +13,9 @@ public record FeedItemResponse(
         List<String> tags,
         String authorAvatar,
         String authorNickname,
-        String tagJson
+        String tagJson,
+        Long likeCount,
+        Long favoriteCount,
+        Boolean liked,
+        Boolean faved
 ) {}

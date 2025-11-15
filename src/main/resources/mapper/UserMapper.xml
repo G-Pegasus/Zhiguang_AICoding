@@ -2,9 +2,9 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.tongji.auth.user.UserMapper">
+<mapper namespace="com.tongji.user.mapper.UserMapper">
 
-    <resultMap id="UserResultMap" type="com.tongji.auth.user.User">
+    <resultMap id="UserResultMap" type="com.tongji.user.domain.User">
         <id column="id" property="id"/>
         <result column="phone" property="phone"/>
         <result column="email" property="email"/>
@@ -51,7 +51,7 @@
         )
     </select>
 
-    <insert id="insert" parameterType="com.tongji.auth.user.User"
+    <insert id="insert" parameterType="com.tongji.user.domain.User"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO users (
             phone,
@@ -97,7 +97,7 @@
         WHERE id = #{id}
     </update>
 
-    <update id="updateProfile" parameterType="com.tongji.auth.user.User">
+    <update id="updateProfile" parameterType="com.tongji.user.domain.User">
         UPDATE users
         <set>
             <if test="nickname != null">nickname = #{nickname},</if>

@@ -2,7 +2,7 @@ package com.tongji.knowpost.api;
 
 import com.tongji.knowpost.api.dto.DescriptionSuggestRequest;
 import com.tongji.knowpost.api.dto.DescriptionSuggestResponse;
-import com.tongji.llm.KnowPostDescriptionService;
+import com.tongji.llm.service.KnowPostDescriptionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;

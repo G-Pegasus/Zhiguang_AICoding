@@ -13,6 +13,28 @@ spring:
     redis:
       host: localhost
       port: 6379
+  kafka:
+    bootstrap-servers: localhost:9092
+    template:
+      default-topic: counter-events
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      linger: 10ms
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 1
+    consumer:
+      group-id: counter-agg
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: latest
+      enable-auto-commit: false
+    listener:
+      type: single
+      ack-mode: manual
   ai:
     deepseek:
       api-key:
@@ -21,6 +43,21 @@ spring:
         options:
           model: deepseek-chat
           temperature: 0.8
+
+canal:
+  enabled: true
+  host: 81.70.43.139
+  port: 11111
+  destination: example
+  username: "canal"
+  password: "Canal@123456"
+  filter: zhiguang\.outbox
+  batchSize: 1000
+  intervalMs: 1000
+
+counter:
+  rebuild:
+    enabled: false
 
 mybatis:
   mapper-locations: classpath*:mapper/*.xml
@@ -57,3 +94,21 @@ oss:
   bucket: zhiguangapp
   public-domain: ${OSS_PUBLIC_DOMAIN:}
   folder: avatars
+
+cache:
+  l2:
+    public-cfg:
+      ttl-seconds: 15
+      max-size: 1000
+    mine-cfg:
+      ttl-seconds: 10
+      max-size: 1000
+  hotkey:
+    window-seconds: 60
+    segment-seconds: 10
+    level-low: 50
+    level-medium: 200
+    level-high: 500
+    extend-low-seconds: 20
+    extend-medium-seconds: 60
+    extend-high-seconds: 120

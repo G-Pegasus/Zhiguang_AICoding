@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tongji.relation.outbox.OutboxMapper">
+    <insert id="insert">
+        INSERT INTO outbox (id, aggregate_type, aggregate_id, type, payload, created_at)
+        VALUES (#{id}, #{aggregateType}, #{aggregateId}, #{type}, #{payload}, NOW(3))
+    </insert>
+</mapper>
+

@@ -3,8 +3,11 @@ package com.tongji.knowpost.mapper;
 import com.tongji.knowpost.model.KnowPost;
 import com.tongji.knowpost.model.KnowPostDetailRow;
 
+import com.tongji.knowpost.model.KnowPostFeedRow;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
 
 @Mapper
 public interface KnowPostMapper {
@@ -19,11 +22,11 @@ public interface KnowPostMapper {
     int publish(@Param("id") Long id, @Param("creatorId") Long creatorId);
 
     // 首页 Feed 列表（已发布、公开可见），置顶优先，其次按发布时间倒序。
-    java.util.List<com.tongji.knowpost.model.KnowPostFeedRow> listFeedPublic(@Param("limit") int limit,
-                                                                             @Param("offset") int offset);
+    List<KnowPostFeedRow> listFeedPublic(@Param("limit") int limit,
+                                         @Param("offset") int offset);
 
     // 我的知文列表（当前用户已发布内容），置顶优先，其次按发布时间倒序。
-    java.util.List<com.tongji.knowpost.model.KnowPostFeedRow> listMyPublished(@Param("creatorId") long creatorId,
+    List<KnowPostFeedRow> listMyPublished(@Param("creatorId") long creatorId,
                                                                               @Param("limit") int limit,
                                                                               @Param("offset") int offset);
 
