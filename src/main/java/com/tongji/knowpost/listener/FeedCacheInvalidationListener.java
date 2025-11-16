@@ -90,17 +90,17 @@ public class FeedCacheInvalidationListener {
     private FeedPageResponse adjustPageCounts(FeedPageResponse page, String eid, String metric, int delta, boolean preserveUserFlags) {
         java.util.List<com.tongji.knowpost.api.dto.FeedItemResponse> items = new java.util.ArrayList<>(page.items().size());
         for (com.tongji.knowpost.api.dto.FeedItemResponse it : page.items()) {
-            if (eid.equals(it.id())) {
-                Long like = it.likeCount();
-                Long fav = it.favoriteCount();
-                if ("like".equals(metric)) like = Math.max(0L, (like == null ? 0L : like) + delta);
-                if ("fav".equals(metric)) fav = Math.max(0L, (fav == null ? 0L : fav) + delta);
-                Boolean liked = preserveUserFlags ? it.liked() : null;
-                Boolean faved = preserveUserFlags ? it.faved() : null;
-                it = new com.tongji.knowpost.api.dto.FeedItemResponse(it.id(), it.title(), it.description(), it.coverImage(), it.tags(), it.authorAvatar(), it.authorNickname(), it.tagJson(), like, fav, liked, faved);
+                if (eid.equals(it.id())) {
+                    Long like = it.likeCount();
+                    Long fav = it.favoriteCount();
+                    if ("like".equals(metric)) like = Math.max(0L, (like == null ? 0L : like) + delta);
+                    if ("fav".equals(metric)) fav = Math.max(0L, (fav == null ? 0L : fav) + delta);
+                    Boolean liked = preserveUserFlags ? it.liked() : null;
+                    Boolean faved = preserveUserFlags ? it.faved() : null;
+                    it = new com.tongji.knowpost.api.dto.FeedItemResponse(it.id(), it.title(), it.description(), it.coverImage(), it.tags(), it.authorAvatar(), it.authorNickname(), it.tagJson(), like, fav, liked, faved, it.isTop());
+                }
+                items.add(it);
             }
-            items.add(it);
-        }
         return new FeedPageResponse(items, page.page(), page.size(), page.hasMore());
     }
 

@@ -2,6 +2,7 @@ package com.tongji.relation.api;
 
 import com.tongji.relation.service.RelationService;
 import com.tongji.auth.token.JwtService;
+import com.tongji.profile.api.dto.ProfileResponse;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.IntFunction;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 
 @RestController
 @RequestMapping("/api/v1/relation")
@@ -72,15 +74,12 @@ public class RelationController {
      * @return 关注用户ID列表
      */
     @GetMapping("/following")
-    public List<Long> following(@RequestParam("userId") long userId,
+    public List<ProfileResponse> following(@RequestParam("userId") long userId,
                                 @RequestParam(value = "limit", defaultValue = "20") int limit,
                                 @RequestParam(value = "offset", defaultValue = "0") int offset,
                                 @RequestParam(value = "cursor", required = false) Long cursor) {
         int l = Math.min(Math.max(limit, 1), 100);
-        if (cursor != null) {
-            return relationService.followingCursor(userId, l, cursor);
-        }
-        return relationService.following(userId, l, Math.max(offset, 0));
+        return relationService.followingProfiles(userId, l, Math.max(offset, 0), cursor);
     }
 
     /**
@@ -92,15 +91,12 @@ public class RelationController {
      * @return 粉丝用户ID列表
      */
     @GetMapping("/followers")
-    public List<Long> followers(@RequestParam("userId") long userId,
+    public List<ProfileResponse> followers(@RequestParam("userId") long userId,
                                           @RequestParam(value = "limit", defaultValue = "20") int limit,
                                           @RequestParam(value = "offset", defaultValue = "0") int offset,
                                           @RequestParam(value = "cursor", required = false) Long cursor) {
         int l = Math.min(Math.max(limit, 1), 100);
-        if (cursor != null) {
-            return relationService.followersCursor(userId, l, cursor);
-        }
-        return relationService.followers(userId, l, Math.max(offset, 0));
+        return relationService.followersProfiles(userId, l, Math.max(offset, 0), cursor);
     }
 
     /**

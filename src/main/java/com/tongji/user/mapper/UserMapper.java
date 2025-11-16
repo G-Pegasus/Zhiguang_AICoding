@@ -3,6 +3,7 @@ package com.tongji.user.mapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import com.tongji.user.domain.User;
+import java.util.List;
 
 @Mapper
 public interface UserMapper {
@@ -24,4 +25,6 @@ public interface UserMapper {
     void updateProfile(User user);
 
     boolean existsByZgIdExceptId(@Param("zgId") String zgId, @Param("excludeId") Long excludeId);
+
+    List<User> listByIds(@Param("ids") List<Long> ids);
 }

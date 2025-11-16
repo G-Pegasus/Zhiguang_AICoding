@@ -113,13 +113,22 @@
         WHERE id = #{id}
     </update>
 
-    <select id="existsByZgIdExceptId" resultType="boolean">
+  <select id="existsByZgIdExceptId" resultType="boolean">
         SELECT EXISTS(
             SELECT 1
             FROM users
             WHERE zg_id = #{zgId}
               AND id != #{excludeId}
         )
+    </select>
+
+    <select id="listByIds" resultMap="UserResultMap">
+        SELECT *
+        FROM users
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
     </select>
 
 </mapper>

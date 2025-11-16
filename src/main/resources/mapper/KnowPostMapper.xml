@@ -108,7 +108,7 @@
         FROM know_posts p
         JOIN users u ON p.creator_id = u.id
         WHERE p.status = 'published' AND p.visible = 'public'
-        ORDER BY p.is_top DESC, p.publish_time DESC
+        ORDER BY p.publish_time DESC
         LIMIT #{limit} OFFSET #{offset}
     </select>
 

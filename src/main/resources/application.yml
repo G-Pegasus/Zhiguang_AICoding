@@ -2,7 +2,7 @@ spring:
   application:
     name: zhiguang-auth
   datasource:
-    url: jdbc:mysql://81.70.43.139:3306/zhiguang?allowPublicKeyRetrieval=true&sslMode=DISABLED
+    url: jdbc:mysql://81.70.43.139:3306/zhiguang?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: root
     password: Liutongji8512.
     driver-class-name: com.mysql.cj.jdbc.Driver
