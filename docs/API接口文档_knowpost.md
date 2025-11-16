@@ -252,7 +252,7 @@ N[注意：需在 OSS CORS 暴露 ETag] --- D
     }
     ```
   - 说明：
-    - 列表仅返回公开（`visible=public`）且已发布（`status=published`）的内容；置顶在前，其次按 `publish_time` 倒序。
+    - 列表仅返回公开（`visible=public`）且已发布（`status=published`）的内容；按 `publish_time` 倒序，不受置顶影响。
     - 每条 `items` 增加 `likeCount`、`favoriteCount`、`liked`、`faved` 字段：
       - `likeCount` / `favoriteCount` 为全局计数；与基础列表一并缓存（约 60s + 随机抖动），可能存在秒级延迟。
       - `liked` / `faved` 为用户维度状态；若未登录则返回 `false`；公开 Feed 中该状态不参与缓存，仅在返回时覆盖，避免不同用户相互干扰。
@@ -311,13 +311,14 @@ N[注意：需在 OSS CORS 暴露 ETag] --- D
           "description": "摘要…",
           "coverImage": "https://cdn.example.com/images/a.jpg",
           "tags": ["Java","后端"],
-      "authorAvatar": "https://cdn.example.com/avatars/me.png",
-      "authorNickname": "我",
-      "tagJson": "[\"Java\",\"后端\"]",
-      "likeCount": 120,
-      "favoriteCount": 56,
-      "liked": true,
-      "faved": false
+          "authorAvatar": "https://cdn.example.com/avatars/me.png",
+          "authorNickname": "我",
+          "tagJson": "[\"Java\",\"后端\"]",
+          "likeCount": 120,
+          "favoriteCount": 56,
+          "liked": true,
+          "faved": false,
+          "isTop": true
         }
       ],
       "page": 1,
@@ -328,6 +329,7 @@ N[注意：需在 OSS CORS 暴露 ETag] --- D
   - 说明：
     - 仅返回当前用户自己“已发布”（`status=published`）的知文；包含任意 `visible`（自己可见）。
     - 排序规则：置顶在前（`is_top`），其次按 `publish_time` 倒序。
+    - 返回 `isTop` 字段表示该知文是否被作者置顶（布尔）。
     - 性能优化：服务端对用户维度列表做短期旁路缓存（约 30–50 秒随机抖动）；数据库建议建立索引 `(creator_id, status, publish_time)`。
     - `coverImage` 取自 `imgUrls` 的第一张图片；`tags` 为字符串数组；`tagJson` 为作者的领域标签（JSON 字符串，直接来自 `users.tags_json`）。
     - 用户维度列表缓存键格式：`feed:mine:{userId}:{size}:{page}`；缓存 TTL 为 `30s + 随机抖动(0–20s)`；计数与列表一并缓存；`liked`/`faved` 也随响应一并缓存（用户维度），但可能因操作造成 30s 内的短暂延迟。

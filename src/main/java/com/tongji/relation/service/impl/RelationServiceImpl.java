@@ -5,11 +5,13 @@ import com.tongji.relation.service.RelationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tongji.relation.event.RelationEvent;
 import com.tongji.relation.outbox.OutboxMapper;
-import com.tongji.relation.processor.RelationEventProcessor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.tongji.user.mapper.UserMapper;
+import com.tongji.user.domain.User;
+import com.tongji.profile.api.dto.ProfileResponse;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -36,7 +38,8 @@ public class RelationServiceImpl implements RelationService {
     private final ObjectMapper objectMapper;
     private final Cache<Long, List<Long>> flwsTopCache;
     private final Cache<Long, List<Long>> fansTopCache;
-    private final RelationEventProcessor eventProcessor;
+    private final UserMapper userMapper;
+    
 
     /**
      * 关系服务实现构造函数。
@@ -49,7 +52,7 @@ public class RelationServiceImpl implements RelationService {
                                OutboxMapper outboxMapper,
                                StringRedisTemplate redis,
                                ObjectMapper objectMapper,
-                               RelationEventProcessor eventProcessor) {
+                               UserMapper userMapper) {
         this.mapper = mapper;
         this.outboxMapper = outboxMapper;
         this.redis = redis;
@@ -59,7 +62,7 @@ public class RelationServiceImpl implements RelationService {
         this.tokenScript.setScriptText(TOKEN_BUCKET_LUA);
         this.flwsTopCache = Caffeine.newBuilder().maximumSize(1000).expireAfterWrite(Duration.ofMinutes(10)).build();
         this.fansTopCache = Caffeine.newBuilder().maximumSize(1000).expireAfterWrite(Duration.ofMinutes(10)).build();
-        this.eventProcessor = eventProcessor;
+        this.userMapper = userMapper;
     }
 
     /**
@@ -87,7 +90,6 @@ public class RelationServiceImpl implements RelationService {
                 outboxMapper.insert(outId, "following", id, "FollowCreated", payload);
             } catch (Exception ignored) {}
 
-            eventProcessor.process(new RelationEvent("FollowCreated", fromUserId, toUserId, id));
             return true;
         }
         return false;
@@ -109,7 +111,6 @@ public class RelationServiceImpl implements RelationService {
                 String payload = objectMapper.writeValueAsString(new RelationEvent("FollowCanceled", fromUserId, toUserId, null));
                 outboxMapper.insert(outId, "following", null, "FollowCanceled", payload);
             } catch (Exception ignored) {}
-            eventProcessor.process(new RelationEvent("FollowCanceled", fromUserId, toUserId, null));
             return true;
         }
         return false;
@@ -226,6 +227,34 @@ public class RelationServiceImpl implements RelationService {
                 "fromUserId",
                 "createdAt"
         );
+    }
+
+    @Override
+    public List<ProfileResponse> followingProfiles(long userId, int limit, int offset, Long cursor) {
+        List<Long> ids = cursor != null ? followingCursor(userId, limit, cursor)
+                                        : following(userId, limit, offset);
+        return toProfiles(ids);
+    }
+
+    @Override
+    public List<ProfileResponse> followersProfiles(long userId, int limit, int offset, Long cursor) {
+        List<Long> ids = cursor != null ? followersCursor(userId, limit, cursor)
+                                        : followers(userId, limit, offset);
+        return toProfiles(ids);
+    }
+
+    private List<ProfileResponse> toProfiles(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        List<User> users = userMapper.listByIds(ids);
+        Map<Long, User> m = new LinkedHashMap<>(users.size());
+        for (User u : users) m.put(u.getId(), u);
+        List<ProfileResponse> out = new ArrayList<>(ids.size());
+        for (Long id : ids) {
+            User u = m.get(id);
+            if (u == null) continue;
+            out.add(new ProfileResponse(u.getId(), u.getNickname(), u.getAvatar(), u.getBio(), u.getZgId(), u.getGender(), u.getBirthday(), u.getSchool(), u.getPhone(), u.getEmail(), u.getTagsJson()));
+        }
+        return out;
     }
 
     /**

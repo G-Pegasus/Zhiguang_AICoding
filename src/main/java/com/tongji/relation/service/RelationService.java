@@ -2,6 +2,7 @@ package com.tongji.relation.service;
 
 import java.util.List;
 import java.util.Map;
+import com.tongji.profile.api.dto.ProfileResponse;
 
 public interface RelationService {
     /**
@@ -64,5 +65,9 @@ public interface RelationService {
      * @return 粉丝用户ID列表
      */
     List<Long> followersCursor(long userId, int limit, Long cursor);
+
+    List<ProfileResponse> followingProfiles(long userId, int limit, int offset, Long cursor);
+
+    List<ProfileResponse> followersProfiles(long userId, int limit, int offset, Long cursor);
 }
 

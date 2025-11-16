@@ -13,6 +13,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 
@@ -32,6 +34,7 @@ public class CanalKafkaBridge implements SmartLifecycle {
     private volatile boolean running;
     private final TaskExecutor taskExecutor;
     private CanalConnector connector;
+    private static final Logger log = LoggerFactory.getLogger(CanalKafkaBridge.class);
 
     /**
      * Canal 到 Kafka 的桥接器。
@@ -78,19 +81,23 @@ public class CanalKafkaBridge implements SmartLifecycle {
      */
     @Override
     public void start() {
-        // 已运行或未启用则直接返回（避免重复启动或在关闭状态下运行）
-        if (running || !enabled) return;
+        if (running) {
+            log.info("Canal bridge start skipped: running={} enabled={} host={} port={} dest={} filter={}", running, enabled, host, port, destination, filter);
+            return;
+        }
         // 标记运行并使用全局线程池异步执行主循环
         running = true;
         taskExecutor.execute(() -> {
             try {
                 // 创建 Canal 单实例连接器并建立连接
                 connector = CanalConnectors.newSingleConnector(new InetSocketAddress(host, port), destination, username, password);
+                log.info("Canal connecting to {}:{} dest={} user={} filter={}", host, port, destination, username, filter);
                 connector.connect();
                 // 订阅过滤表达式，仅拉取关心的表（如 outbox）
                 connector.subscribe(filter);
                 // 回滚到上次确认位点，保证一致性处理
                 connector.rollback();
+                log.info("Canal connected and subscribed: host={} port={} dest={} filter={} batchSize={} intervalMs={}ms", host, port, destination, filter, batchSize, intervalMs);
                 while (running) {
                     // 拉取一批未确认消息（不自动 ack）
                     Message message = connector.getWithoutAck(batchSize);
@@ -148,13 +155,17 @@ public class CanalKafkaBridge implements SmartLifecycle {
                     // 批次确认（推进位点），避免消息重放
                     connector.ack(batchId);
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.error("Canal bridge error", e);
             } finally {
                 if (connector != null) {
                     // 断开 Canal 连接（资源清理）
                     try {
                         connector.disconnect();
-                    } catch (Exception ignored) {}
+                        log.info("Canal disconnected: dest={}", destination);
+                    } catch (Exception ex) {
+                        log.warn("Canal disconnect failed: dest={} err={}", destination, ex.getMessage());
+                    }
                 }
             }
         });
