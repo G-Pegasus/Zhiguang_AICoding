@@ -97,8 +97,8 @@
   - `followings` `long` 关注数
   - `followers` `long` 粉丝数
   - `posts` `long` 发帖数
-  - `likedPosts` `long` 点赞过的帖子数
-  - `favedPosts` `long` 收藏过的帖子数
+  - `likedPosts` `long` 获得的点赞数（作者维度累计）
+  - `favedPosts` `long` 获得的收藏数（作者维度累计）
 - 示例：
   - `curl "https://host/api/v1/relation/counter?userId=100" -H "Authorization: Bearer <token>"`
 

@@ -48,5 +48,13 @@
         WHERE to_user_id=#{toUserId} AND rel_status=1
         ORDER BY created_at DESC LIMIT #{limit} OFFSET #{offset}
     </select>
+
+    <select id="countFollowingActive" resultType="int">
+        SELECT COUNT(1) FROM following WHERE from_user_id=#{fromUserId} AND rel_status=1
+    </select>
+
+    <select id="countFollowerActive" resultType="int">
+        SELECT COUNT(1) FROM follower WHERE to_user_id=#{toUserId} AND rel_status=1
+    </select>
 </mapper>
 

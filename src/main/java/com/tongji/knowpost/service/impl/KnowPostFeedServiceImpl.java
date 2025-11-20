@@ -92,6 +92,8 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
         int safeSize = Math.min(Math.max(size, 1), 50);
         int safePage = Math.max(page, 1);
         String key = cacheKey(safePage, safeSize);
+        // 按小时分片的片段缓存键：降低跨小时内容更新导致的大面积失效风险
+        // 将分页维度（size/page）与时间维度（hourSlot）组合，避免热门页在整站失效时同时回源
         long hourSlot = System.currentTimeMillis() / 3600000L;
         String idsKey = "feed:public:ids:" + safeSize + ":" + hourSlot + ":" + safePage;
         String hasMoreKey = "feed:public:ids:" + safeSize + ":" + hourSlot + ":" + safePage + ":hasMore";
@@ -137,6 +139,8 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
             }
         }
 
+        // 单航班机制：以 idsKey 作为“航班号”
+        // 并发下同一页只允许一个请求回源数据库，其余在锁内优先重查缓存，避免击穿惊群
         Object lock = singleFlight.computeIfAbsent(idsKey, k -> new Object());
         synchronized (lock) {
             // 重查三层缓存，避免重复回源
@@ -150,6 +154,7 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
                 return again;
             }
 
+            // 数据库回源：读取 size+1 以判断是否有下一页，后裁剪为当前页
             int offset = (safePage - 1) * safeSize;
             List<KnowPostFeedRow> rows = mapper.listFeedPublic(safeSize + 1, offset);
             boolean hasMore = rows.size() > safeSize;
@@ -157,13 +162,16 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
                 rows = rows.subList(0, safeSize);
             }
 
-            // 构建基础列表（计数），liked/faved 置为 null，用于缓存
+            // 构建基础列表（计数已填充），liked/faved 置为 null 以免污染用户维度缓存
             List<FeedItemResponse> items = mapRowsToItems(rows, null, false);
 
             FeedPageResponse respForCache = new FeedPageResponse(items, safePage, safeSize, hasMore);
+            // 片段缓存（ids/item/count）TTL 更长并加入随机抖动，降低同一时刻大量过期
             int baseTtl = 60;
             int jitter = ThreadLocalRandom.current().nextInt(30);
             Duration frTtl = Duration.ofSeconds(baseTtl + jitter);
+
+            // 页面缓存 TTL 更短（10~20s），用于快速返回但不承载用户态
             Duration pageTtl = Duration.ofSeconds(10 + ThreadLocalRandom.current().nextInt(11));
             writeCaches(key, idsKey, hasMoreKey, safePage, safeSize, rows, items, hasMore, frTtl, pageTtl);
             feedPublicCache.put(key, respForCache);
@@ -171,6 +179,7 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
             // 返回时覆盖用户维度状态，不写回缓存
             List<FeedItemResponse> enriched = enrich(items, currentUserIdNullable);
             log.info("feed.public source=db key={} page={} size={} hasMore={}", key, safePage, safeSize, hasMore);
+            // 释放单航班锁，允许后续请求正常进入
             singleFlight.remove(idsKey);
             return new FeedPageResponse(enriched, safePage, safeSize, hasMore);
         }
@@ -236,6 +245,7 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
             String ij = itemJsons != null && i < itemJsons.size() ? itemJsons.get(i) : null;
             FeedItemResponse base = null;
             if (ij != null) {
+                // 使用 "NULL" 作为空占位哨兵，防止对不存在内容的穿透与击穿
                 if ("NULL".equals(ij)) {
                     items.add(null);
                     continue;
@@ -261,6 +271,7 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
                 }
                 List<String> tags = parseStringArray(d.getTags());
                 List<String> imgs = parseStringArray(d.getImgUrls());
+                // 知文封面
                 String cover = imgs.isEmpty() ? null : imgs.getFirst();
                 FeedItemResponse it = new FeedItemResponse(String.valueOf(d.getId()), d.getTitle(), d.getDescription(), cover, tags, d.getAuthorAvatar(), d.getAuthorNickname(), d.getAuthorTagJson(), null, null, null, null, null);
                 String k = "feed:item:" + mid;
@@ -292,11 +303,13 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
         }
         if (!needCountsIds.isEmpty()) {
             Map<String, Map<String, Long>> batch = counterService.getCountsBatch("knowpost", needCountsIds, List.of("like","fav"));
+
             for (String nid : needCountsIds) {
                 Map<String, Long> m = batch.getOrDefault(nid, Map.of("like",0L,"fav",0L));
                 String k = "feed:count:" + nid;
                 try {
                     String j = objectMapper.writeValueAsString(m);
+                    // 计数片段 TTL 与 idsKey 对齐，保证片段整体一致性
                     long ttl = redis.getExpire(idsKey);
                     if (ttl > 0) {
                         redis.opsForValue().set(k, j, Duration.ofSeconds(ttl));
@@ -319,10 +332,12 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
             Map<String, Long> m = countVals.get(i);
             Long likeCount = m != null ? m.getOrDefault("like", 0L) : 0L;
             Long favoriteCount = m != null ? m.getOrDefault("fav", 0L) : 0L;
+            // 用户维度状态实时计算，不落入片段缓存以避免用户数据污染
             boolean liked = uid != null && counterService.isLiked("knowpost", base.id(), uid);
             boolean faved = uid != null && counterService.isFaved("knowpost", base.id(), uid);
             enriched.add(new FeedItemResponse(base.id(), base.title(), base.description(), base.coverImage(), base.tags(), base.authorAvatar(), base.authorNickname(), base.tagJson(), likeCount, favoriteCount, liked, faved, base.isTop()));
         }
+        // hasMore 优先使用软缓存值；若缺失，则以“满页”作为兜底判断
         boolean hasMore = hasMoreStr != null ? "1".equals(hasMoreStr) : (idList.size() == size);
         return new FeedPageResponse(enriched, page, size, hasMore);
     }
@@ -361,8 +376,10 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
                 redis.opsForValue().set(hasMoreKey, hasMore ? "1" : "0", Duration.ofSeconds(10));
             }
         }
+        // 页面键集合索引，用于按页面维度批量失效与清理
         redis.opsForSet().add("feed:public:pages", pageKey);
         for (FeedItemResponse it : items) {
+            // 反向索引：按小时为每个内容建立“页面引用关系”，支持内容更新时快速定位受影响页面
             long hourSlot = System.currentTimeMillis() / 3600000L;
             String idxKey = "feed:public:index:" + it.id() + ":" + hourSlot;
             redis.opsForSet().add(idxKey, pageKey);
@@ -404,6 +421,7 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
                     redis.opsForValue().set(hasMoreKey, hasMore ? "1" : "0", Duration.ofSeconds(10));
                 }
             }
+            // 片段修复时也补齐反向索引，保持与 idsKey 一致的小时分片
             long hourSlot = System.currentTimeMillis() / 3600000L;
             for (FeedItemResponse it : page.items()) {
                 String itemKey = "feed:item:" + it.id();
@@ -416,6 +434,7 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
                     String cntJson = objectMapper.writeValueAsString(cnt);
                     redis.opsForValue().set(cntKey, cntJson, frTtl);
                 } catch (Exception ignored) {}
+                // 建立反向索引，便于内容更新时精准失效页面缓存
                 redis.opsForSet().add(idxKey, cacheKey(safePage, safeSize));
                 redis.expire(idxKey, frTtl);
             }
@@ -556,7 +575,7 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
         int baseTtl = 60;
         int target = hotKey.ttlForPublic(baseTtl, key);
         Long currentTtl = redis.getExpire(key);
-        if (currentTtl == null || currentTtl < target) {
+        if (currentTtl < target) {
             redis.expire(key, Duration.ofSeconds(target));
         }
     }
@@ -569,7 +588,7 @@ public class KnowPostFeedServiceImpl implements KnowPostFeedService {
         int baseTtl = 30;
         int target = hotKey.ttlForMine(baseTtl, key);
         Long currentTtl = redis.getExpire(key);
-        if (currentTtl == null || currentTtl < target) {
+        if (currentTtl < target) {
             redis.expire(key, Duration.ofSeconds(target));
         }
     }

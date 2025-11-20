@@ -37,6 +37,7 @@ public class KnowPostServiceImpl implements KnowPostService {
     private final OssProperties ossProperties;
     private final FeedCacheService feedCacheService;
     private final CounterService counterService;
+    private final com.tongji.counter.service.UserCounterService userCounterService;
     private final StringRedisTemplate redis;
     private final HotKeyDetector hotKey;
     private static final Logger log = LoggerFactory.getLogger(KnowPostServiceImpl.class);
@@ -140,6 +141,10 @@ public class KnowPostServiceImpl implements KnowPostService {
         if (updated == 0) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "草稿不存在或无权限");
         }
+        try {
+            userCounterService.incrementPosts(creatorId, 1);
+        } catch (Exception ignored) {}
+
         // 更新后再次删除，避免并发下写回旧值
         feedCacheService.doubleDeleteAll(200);
         feedCacheService.doubleDeleteMy(creatorId, 200);

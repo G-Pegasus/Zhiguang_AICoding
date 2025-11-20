@@ -2,6 +2,11 @@ package com.tongji.relation.event;
 
 import lombok.Data;
 
+/**
+ * 关系领域事件模型。
+ * 字段：type（FollowCreated/FollowCanceled）、fromUserId（触发方）、toUserId（目标方）、id（关系记录ID，可为空）。
+ * 用途：经 Outbox 持久化与 Canal 转发后，供消费者处理入库、缓存与计数更新。
+ */
 @Data
 public class RelationEvent {
     private String type;

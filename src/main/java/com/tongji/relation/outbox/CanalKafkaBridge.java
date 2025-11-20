@@ -18,6 +18,11 @@ import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 
+/**
+ * Canal→Kafka 桥接器。
+ * 职责：订阅 outbox 表的行级变更（ROWDATA），仅转发 INSERT/UPDATE 的 payload 字段到 Kafka 主题；批次确认位点确保至少一次语义。
+ * 可靠性：解析失败或非关心类型不提交位点；停止时断开 Canal 连接并清理资源。
+ */
 @Service
 public class CanalKafkaBridge implements SmartLifecycle {
     private final KafkaTemplate<String, String> kafka;

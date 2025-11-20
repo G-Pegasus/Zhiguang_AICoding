@@ -155,4 +155,13 @@
         WHERE p.id = #{id}
     </select>
 
+    <select id="countMyPublished" parameterType="long" resultType="long">
+        SELECT COUNT(1)
+        FROM know_posts
+        WHERE creator_id = #{creatorId} AND status = 'published'
+    </select>
+    <select id="listMyPublishedIds" parameterType="long" resultType="long">
+        SELECT id FROM know_posts WHERE creator_id = #{creatorId} AND status = 'published'
+    </select>
+
 </mapper>
