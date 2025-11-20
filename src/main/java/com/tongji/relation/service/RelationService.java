@@ -4,6 +4,10 @@ import java.util.List;
 import java.util.Map;
 import com.tongji.profile.api.dto.ProfileResponse;
 
+/**
+ * 关系服务接口。
+ * 能力：关注/取消关注、关系查询、关注/粉丝列表（偏移与游标），以及用户资料视图的聚合组装。
+ */
 public interface RelationService {
     /**
      * 关注操作。
@@ -66,8 +70,24 @@ public interface RelationService {
      */
     List<Long> followersCursor(long userId, int limit, Long cursor);
 
+    /**
+     * 关注列表（资料视图）：在 ID 列表基础上聚合用户资料，支持偏移或游标。
+     * @param userId 用户ID
+     * @param limit 返回数量上限
+     * @param offset 偏移量（游标为空时生效）
+     * @param cursor 游标（上一页末条分数）
+     * @return 关注用户的资料视图列表
+     */
     List<ProfileResponse> followingProfiles(long userId, int limit, int offset, Long cursor);
 
+    /**
+     * 粉丝列表（资料视图）：在 ID 列表基础上聚合用户资料，支持偏移或游标。
+     * @param userId 用户ID
+     * @param limit 返回数量上限
+     * @param offset 偏移量（游标为空时生效）
+     * @param cursor 游标（上一页末条分数）
+     * @return 粉丝用户的资料视图列表
+     */
     List<ProfileResponse> followersProfiles(long userId, int limit, int offset, Long cursor);
 }
 

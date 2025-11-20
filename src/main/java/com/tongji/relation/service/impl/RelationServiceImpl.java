@@ -29,6 +29,14 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import java.nio.charset.StandardCharsets;
 import org.springframework.data.redis.core.RedisCallback;
 
+/**
+ * 关系服务实现。
+ * 设计要点：
+ * - 写路径：关注/取消关注经 Lua 令牌桶限流后入库，并以 Outbox 事件异步驱动粉丝表更新与缓存维护；
+ * - 读路径：优先读取 Redis ZSet（关注/粉丝）并按需回填，支持偏移与游标两种分页；大V用户启用本地 Top 缓存；
+ * - 计数：用户维度计数（关注/粉丝等）通过独立服务维护，阈值判断如“大V”基于 SDS 段值；
+ * - 并发与一致性：回填后设置短 TTL，降低陈旧风险；Outbox 事件消费者提供幂等与去重保障。
+ */
 @Service
 public class RelationServiceImpl implements RelationService {
     private final RelationMapper mapper;
@@ -243,6 +251,9 @@ public class RelationServiceImpl implements RelationService {
         return toProfiles(ids);
     }
 
+    /**
+     * 将用户 ID 列表映射为资料视图列表（批量查询并保持输入顺序）。
+     */
     private List<ProfileResponse> toProfiles(List<Long> ids) {
         if (ids == null || ids.isEmpty()) return List.of();
         List<User> users = userMapper.listByIds(ids);
@@ -271,6 +282,9 @@ public class RelationServiceImpl implements RelationService {
         return n >= 500_000L;
     }
 
+    /**
+     * 偏移分页读取：优先命中 ZSet，未命中时从 DB 回填并设置 TTL；大V用户维护本地 Top 缓存以降低冷启动开销。
+     */
     private List<Long> getListWithOffset(
             String key,
             int offset,
@@ -307,6 +321,9 @@ public class RelationServiceImpl implements RelationService {
         return Collections.emptyList();
     }
 
+    /**
+     * 游标分页读取：按分数（毫秒时间戳）倒序读取；未命中时回填满足所需范围的数据并继续读取。
+     */
     private List<Long> getListWithCursor(String key,
                                          int limit,
                                          Long cursor,
@@ -329,6 +346,9 @@ public class RelationServiceImpl implements RelationService {
         return Collections.emptyList();
     }
 
+    /**
+     * 将行数据填充至 ZSet：分值为创建时间戳；若提供游标则只填充不高于游标的记录。
+     */
     private void fillZSet(String key,
                           Map<Long, Map<String, Object>> rows,
                           String idField,
@@ -345,18 +365,31 @@ public class RelationServiceImpl implements RelationService {
         }
     }
 
+    /**
+     * 将多类型时间对象统一转换为毫秒分值。
+     */
     private long tsScore(Object tsObj) {
-        if (tsObj instanceof Timestamp ts) return ts.getTime();
-        if (tsObj instanceof Date d) return d.getTime();
+        if (tsObj instanceof Timestamp ts) {
+            return ts.getTime();
+        }
+        if (tsObj instanceof Date d) {
+            return d.getTime();
+        }
         return System.currentTimeMillis();
     }
 
+    /**
+     * 将字符串集合按原顺序映射为长整型列表。
+     */
     private List<Long> toLongList(Set<String> set) {
         List<Long> out = new ArrayList<>(set.size());
         for (String s : set) out.add(Long.valueOf(s));
         return out;
     }
 
+    /**
+     * 更新本地 Top 缓存：大V 用户仅缓存前 500 名，减少频繁回源与排序成本。
+     */
     private void maybeUpdateTopCache(long userId, String key, Cache<Long, List<Long>> cache) {
         Set<String> allSet = redis.opsForZSet().reverseRange(key, 0, 499);
         if (allSet == null || allSet.isEmpty()) return;
@@ -365,21 +398,23 @@ public class RelationServiceImpl implements RelationService {
         cache.put(userId, all);
     }
 
-    private static final String TOKEN_BUCKET_LUA = "\n" +
-            "local key = KEYS[1]\n" +
-            "local capacity = tonumber(ARGV[1])\n" +
-            "local rate = tonumber(ARGV[2])\n" +
-            "local now = redis.call('TIME')[1]\n" +
-            "local last = redis.call('HGET', key, 'last')\n" +
-            "local tokens = redis.call('HGET', key, 'tokens')\n" +
-            "if not last then last = now; tokens = capacity end\n" +
-            "local elapsed = tonumber(now) - tonumber(last)\n" +
-            "local add = elapsed * rate\n" +
-            "tokens = math.min(capacity, tonumber(tokens) + add)\n" +
-            "if tokens < 1 then redis.call('HSET', key, 'last', now); redis.call('HSET', key, 'tokens', tokens); return 0 end\n" +
-            "tokens = tokens - 1\n" +
-            "redis.call('HSET', key, 'last', now)\n" +
-            "redis.call('HSET', key, 'tokens', tokens)\n" +
-            "redis.call('PEXPIRE', key, 60000)\n" +
-            "return 1\n";
+    private static final String TOKEN_BUCKET_LUA = """
+            
+            local key = KEYS[1]
+            local capacity = tonumber(ARGV[1])
+            local rate = tonumber(ARGV[2])
+            local now = redis.call('TIME')[1]
+            local last = redis.call('HGET', key, 'last')
+            local tokens = redis.call('HGET', key, 'tokens')
+            if not last then last = now; tokens = capacity end
+            local elapsed = tonumber(now) - tonumber(last)
+            local add = elapsed * rate
+            tokens = math.min(capacity, tonumber(tokens) + add)
+            if tokens < 1 then redis.call('HSET', key, 'last', now); redis.call('HSET', key, 'tokens', tokens); return 0 end
+            tokens = tokens - 1
+            redis.call('HSET', key, 'last', now)
+            redis.call('HSET', key, 'tokens', tokens)
+            redis.call('PEXPIRE', key, 60000)
+            return 1
+            """;
 }

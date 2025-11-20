@@ -41,4 +41,10 @@ public interface KnowPostMapper {
 
     // 详情查询（含作者信息）
     KnowPostDetailRow findDetailById(@Param("id") Long id);
+
+    // 统计我的已发布知文数量
+    long countMyPublished(@Param("creatorId") long creatorId);
+
+    // 列出我的已发布知文ID列表
+    List<Long> listMyPublishedIds(@Param("creatorId") long creatorId);
 }

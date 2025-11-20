@@ -8,6 +8,10 @@ import java.util.List;
 import java.util.Map;
 
 @Mapper
+/**
+ * 关系表数据访问层。
+ * 职责：维护关注/粉丝关系的插入与逻辑取消，分页读取与行数据回填，统计有效关系计数。
+ */
 public interface RelationMapper {
     /**
      * 插入关注关系。
@@ -107,5 +111,15 @@ public interface RelationMapper {
     Map<Long, Map<String, Object>> listFollowerRows(@Param("toUserId") Long toUserId,
                                                     @Param("limit") int limit,
                                                     @Param("offset") int offset);
+
+    /**
+     * 统计关注数（有效关系）。
+     */
+    int countFollowingActive(@Param("fromUserId") Long fromUserId);
+
+    /**
+     * 统计粉丝数（有效关系）。
+     */
+    int countFollowerActive(@Param("toUserId") Long toUserId);
 }
 

@@ -29,7 +29,7 @@ public class CounterRebuildConsumer {
         this.redis = redis;
         this.incrScript = new DefaultRedisScript<>();
         this.incrScript.setResultType(Long.class);
-        this.incrScript.setScriptText(INCR_FIELD_LUA);
+        this.incrScript.setScriptText(INCR_FIELD_LUA); // 复用与聚合刷写一致的原子折叠脚本
     }
 
     @KafkaListener(
@@ -38,6 +38,7 @@ public class CounterRebuildConsumer {
             properties = {"auto.offset.reset=earliest"}
     )
     public void onMessage(String message, Acknowledgment ack) throws Exception {
+        // 灾备场景：从最早位点回放历史事件，直接折叠到 SDS
         CounterEvent evt = objectMapper.readValue(message, CounterEvent.class);
         String cntKey = CounterKeys.sdsKey(evt.getEntityType(), evt.getEntityId());
         try {
@@ -46,7 +47,7 @@ public class CounterRebuildConsumer {
                     String.valueOf(CounterSchema.FIELD_SIZE),
                     String.valueOf(evt.getIdx()),
                     String.valueOf(evt.getDelta()));
-            ack.acknowledge();
+            ack.acknowledge(); // 写入成功后提交位点，避免重复回放
         } catch (Exception ex) {
             // 不提交位点以便重试
         }

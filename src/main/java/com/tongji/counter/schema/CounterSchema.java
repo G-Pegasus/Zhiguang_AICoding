@@ -27,7 +27,7 @@ public final class CounterSchema {
             "fav", IDX_FAV
     );
 
-    public static final Set<String> SUPPORTED_METRICS = NAME_TO_IDX.keySet();
+    public static final Set<String> SUPPORTED_METRICS = NAME_TO_IDX.keySet(); // 对外可请求的指标集合
 
     private CounterSchema() {}
 }

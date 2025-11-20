@@ -3,6 +3,10 @@ package com.tongji.relation.outbox;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+/**
+ * Outbox 事件持久化 Mapper。
+ * 职责：将领域事件以统一结构写入 outbox 表，供 Canal 捕获并转发至 Kafka。
+ */
 @Mapper
 public interface OutboxMapper {
     /**
