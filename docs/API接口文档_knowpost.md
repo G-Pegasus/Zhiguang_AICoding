@@ -387,3 +387,70 @@ N[注意：需在 OSS CORS 暴露 ETag] --- D
   - 基于 Spring AI + DeepSeek（OpenAI 兼容接口 `deepseek-chat`）；温度 0.2，服务端再次裁剪至 50 字以内。
   - 若正文为空或调用失败，返回统一错误码。
   - 该接口仅生成摘要，不做内容保存或审核。
+
+---
+
+#### 知文 RAG 问答（流式）
+
+- 路径：`GET /api/v1/knowposts/{id}/qa/stream`
+  - 鉴权：公开访问（仅对已发布且 `visible=public` 的知文有效）。
+  - 内容类型：`text/event-stream`（SSE，服务端持续推送分片内容）。
+  - 查询参数：
+    - `question`：必填，用户问题（字符串）。
+    - `topK`：可选，默认 `5`，用于拼接的上下文片段数。
+    - `maxTokens`：可选，默认 `1024`，LLM 最大生成长度。
+  - 行为：
+    - 服务端先基于向量索引检索与问题相关的上下文（按 `postId` 过滤，仅取当前知文的片段）。
+    - 将若干上下文（最多 `topK`）拼接为提示词，调用 DeepSeek 模型进行流式生成。
+    - 以 SSE 的 `data:` 行连续推送生成内容，直到完成或连接关闭。
+
+- SSE 输出示例：
+  ```text
+  data: 你好，我来根据上下文回答你的问题。
+
+  data: 首先，……
+
+  data: 其次，……
+
+  data: （生成完成，连接关闭）
+  ```
+
+- 前端消费示例（EventSource）：
+  ```js
+  const es = new EventSource(`/api/v1/knowposts/1234567890123/qa/stream?question=Markdown有哪些基本语法&topK=5&maxTokens=1024`);
+  let answer = '';
+  es.onmessage = (e) => { answer += e.data; /* 可逐步渲染 */ };
+  es.onerror = () => { es.close(); };
+  ```
+
+- `curl` 示例：
+  ```bash
+  curl -N "http://localhost:8080/api/v1/knowposts/1234567890123/qa/stream?question=Markdown有哪些基本语法&topK=5&maxTokens=1024"
+  ```
+
+- 说明与约束：
+  - 仅索引并检索“已发布 + 公开”的知文；非公开或草稿不参与 RAG。
+  - 检索使用 Spring AI `VectorStore`（Elasticsearch 后端），按 `postId` 精确过滤。
+  - 片段策略：约 800 字切片，重叠 ~100 字；优先分段于标题/段落处。
+  - 若上下文缺失或不充分，模型会按系统提示说明“不确定”。
+  - 错误与异常：缺失 `question` 会返回 `400`；后端故障可能导致连接中断或 `5xx`。
+
+---
+
+#### 知文 RAG 索引重建
+
+- 路径：`POST /api/v1/knowposts/{id}/rag/reindex`
+  - 鉴权：建议限制为作者或管理员（部署时可加网关/鉴权策略）。
+  - 内容类型：`application/json`
+  - 请求体：无
+  - 成功响应：返回整数，表示重建的切片数量，例如：
+    ```json
+    8
+    ```
+  - 行为：
+    - 拉取该知文的正文（`contentUrl`），按片段策略切分并写入向量库。
+    - 仅当知文为“已发布 + 公开”时执行；否则返回 `0` 并写告警日志。
+
+- 备注：
+  - 向量库索引名来源于配置：`spring.ai.vectorstore.elasticsearch.index-name`（如：`zhiguang-ai-index`）。
+  - Elasticsearch 连接从 `spring.elasticsearch.uris` 获取；可选 `username/password` 用于基本认证。

@@ -14,7 +14,9 @@ import com.tongji.knowpost.model.KnowPostDetailRow;
 import com.tongji.knowpost.api.dto.KnowPostDetailResponse;
 import com.tongji.counter.service.CounterService;
 import com.tongji.storage.config.OssProperties;
+import com.tongji.llm.rag.RagIndexService;
 import com.tongji.cache.hotkey.HotKeyDetector;
+import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -26,12 +28,14 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
 public class KnowPostServiceImpl implements KnowPostService {
 
     private final KnowPostMapper mapper;
+    @Resource
     private final SnowflakeIdGenerator idGen;
     private final ObjectMapper objectMapper;
     private final OssProperties ossProperties;
@@ -42,7 +46,8 @@ public class KnowPostServiceImpl implements KnowPostService {
     private final HotKeyDetector hotKey;
     private static final Logger log = LoggerFactory.getLogger(KnowPostServiceImpl.class);
     private static final int DETAIL_LAYOUT_VER = 1;
-    private final java.util.concurrent.ConcurrentHashMap<String, Object> singleFlight = new java.util.concurrent.ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Object> singleFlight = new ConcurrentHashMap<>();
+    private final RagIndexService ragIndexService;
 
     /**
      * 创建草稿并返回新 ID。
@@ -92,6 +97,13 @@ public class KnowPostServiceImpl implements KnowPostService {
         feedCacheService.doubleDeleteAll(200);
         feedCacheService.doubleDeleteMy(creatorId, 200);
         redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
+
+        // 触发一次预索引（草稿阶段可能因可见性/状态被跳过）
+        try {
+            ragIndexService.ensureIndexed(id);
+        } catch (Exception e) {
+            log.warn("Pre-index after content confirm failed, post {}: {}", id, e.getMessage());
+        }
     }
 
     /**
@@ -149,6 +161,13 @@ public class KnowPostServiceImpl implements KnowPostService {
         feedCacheService.doubleDeleteAll(200);
         feedCacheService.doubleDeleteMy(creatorId, 200);
         redis.delete("knowpost:detail:" + id + ":v" + DETAIL_LAYOUT_VER);
+
+        // 发布成功后触发一次预索引，减少首次问答冷启动
+        try {
+            ragIndexService.ensureIndexed(id);
+        } catch (Exception e) {
+            log.warn("Pre-index after publish failed, post {}: {}", id, e.getMessage());
+        }
     }
 
     /**
@@ -349,6 +368,7 @@ public class KnowPostServiceImpl implements KnowPostService {
             Map<String, Long> counts = counterService.getCounts("knowpost", String.valueOf(row.getId()), List.of("like", "fav"));
             Long likeCount = counts.getOrDefault("like", 0L);
             Long favoriteCount = counts.getOrDefault("fav", 0L);
+
             KnowPostDetailResponse resp = new KnowPostDetailResponse(
                     String.valueOf(row.getId()),
                     row.getTitle(),
@@ -407,7 +427,7 @@ public class KnowPostServiceImpl implements KnowPostService {
         int baseTtl = 60;
         int target = hotKey.ttlForPublic(baseTtl, key);
         Long currentTtl = redis.getExpire(key);
-        if (currentTtl == null || currentTtl < target) {
+        if (currentTtl < target) {
             redis.expire(key, java.time.Duration.ofSeconds(target));
         }
     }

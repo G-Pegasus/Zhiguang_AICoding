@@ -46,13 +46,41 @@ public class SnowflakeIdGenerator {
     public synchronized long nextId() {
         long timestamp = currentTime();
 
+//        if (timestamp < lastTimestamp) {
+//            throw new IllegalStateException("Clock moved backwards. Refusing to generate id");
+//        }
+        // 等待时钟追回的方案
         if (timestamp < lastTimestamp) {
-            throw new IllegalStateException("Clock moved backwards. Refusing to generate id");
+            long offset = lastTimestamp - timestamp;
+
+            // 1. 小幅度回拨（比如 NTP 校时导致的 1~5ms 间抖动）：等待一会儿再试
+            if (offset <= 5) {
+                try {
+                    // 睡 offset 毫秒，给系统时钟一点时间“追上来”
+                    Thread.sleep(offset);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Thread interrupted while waiting for clock to catch up", e);
+                }
+
+                timestamp = currentTime();
+                if (timestamp < lastTimestamp) {
+                    // 等完还是没追上，说明问题较严重，直接拒绝
+                    throw new IllegalStateException(
+                            "Clock is still behind after waiting. last=" + lastTimestamp + ", now=" + timestamp);
+                }
+            } else {
+                // 2. 回拨幅度太大，直接拒绝，避免线程长时间阻塞
+                throw new IllegalStateException(
+                        "Clock moved backwards too much. Refusing to generate id. offset=" + offset + "ms");
+            }
         }
 
+        // 处理同一毫秒内的并发请求：序列号逻辑
         if (lastTimestamp == timestamp) {
             sequence = (sequence + 1) & SEQUENCE_MASK;
             if (sequence == 0) {
+                // 这一毫秒的 4096 个名额用完了
                 timestamp = waitNextMillis(lastTimestamp);
             }
         } else {
@@ -61,6 +89,7 @@ public class SnowflakeIdGenerator {
 
         lastTimestamp = timestamp;
 
+        // 组装 64 位 ID
         return ((timestamp - EPOCH) << TIMESTAMP_LEFT_SHIFT)
                 | (datacenterId << DATACENTER_ID_SHIFT)
                 | (workerId << WORKER_ID_SHIFT)

@@ -142,6 +142,8 @@
             p.tags,
             p.img_urls AS imgUrls,
             p.content_url AS contentUrl,
+            p.content_etag AS contentEtag,
+            p.content_sha256 AS contentSha256,
             u.avatar AS authorAvatar,
             u.nickname AS authorNickname,
             u.tags_json AS authorTagJson,

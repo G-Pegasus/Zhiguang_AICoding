@@ -1,14 +1,18 @@
 <component name="ProjectDictionaryState">
   <dictionary name="project">
     <words>
+      <w>aliyun</w>
       <w>bitcount</w>
+      <w>creds</w>
       <w>etype</w>
       <w>faved</w>
       <w>imgs</w>
       <w>knowpost</w>
+      <w>knowposts</w>
       <w>liutongji</w>
       <w>tongji</w>
       <w>ucnt</w>
+      <w>vectorstore</w>
     </words>
   </dictionary>
 </component>
