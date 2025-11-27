@@ -50,6 +50,20 @@ spring:
         options:
           model: deepseek-chat
           temperature: 0.8
+    openai:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      api-key:
+      embedding:
+        options:
+          model: text-embedding-v4 # 向量模型
+          dimensions: 1536
+    vectorstore:
+      elasticsearch:
+        initialize-schema: true
+        index-name: zhiguang-ai-index
+        dimensions: 1536 # 一定要和上面的 dimensions 一致，不然会报错
+  elasticsearch:
+    uris: http://localhost:9200
 
 canal:
   enabled: true

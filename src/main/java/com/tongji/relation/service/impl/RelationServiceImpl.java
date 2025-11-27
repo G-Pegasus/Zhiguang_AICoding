@@ -312,9 +312,11 @@ public class RelationServiceImpl implements RelationService {
         if (rows != null && !rows.isEmpty()) {
             fillZSet(key, rows, idField, tsField, null);
             redis.expire(key, Duration.ofHours(2));
+
             if (localCache != null && isBigV(userId)) {
                 maybeUpdateTopCache(userId, key, localCache);
             }
+
             Set<String> filled = redis.opsForZSet().reverseRange(key, offset, offset + limit - 1L);
             return filled == null ? Collections.emptyList() : toLongList(filled);
         }
