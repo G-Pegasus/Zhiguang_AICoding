@@ -17,17 +17,29 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
 
+/**
+ * RAG 索引构建服务：
+ * - 将公开且已发布的知文切片并写入向量库
+ * - 通过指纹（SHA256/ETag）判断是否需要重建，保证幂等
+ * - 采用 delete-by-query 清理旧切片，再批量 upsert 新切片
+ */
 @Service
 @RequiredArgsConstructor
 public class RagIndexService {
     private static final Logger log = LoggerFactory.getLogger(RagIndexService.class);
+    // 向量库封装（Elasticsearch VectorStore），负责写入/检索向量
     private final VectorStore vectorStore;
+    // 数据访问：根据 postId 查询知文详情（含 contentUrl、指纹等）
     private final KnowPostMapper knowPostMapper;
+    // 拉取 Markdown 正文内容
     private final RestTemplate http = new RestTemplate();
+    // 直接使用 ES 客户端做指纹判断和删除旧切片
     private final ElasticsearchClient es;
+    // ES 相关配置（索引名等）
     private final EsProperties esProps;
 
     public void ensureIndexed(long postId) {
+        // 当前策略：在问答前直接尝试重建（指纹未变化时会跳过）
         reindexSinglePost(postId);
     }
 
@@ -44,6 +56,7 @@ public class RagIndexService {
             return 0;
         }
 
+        // 内容地址缺失则无法抓取正文
         if (!StringUtils.hasText(row.getContentUrl())) {
             log.warn("Post {} missing contentUrl or not found", postId);
             return 0;
@@ -57,16 +70,19 @@ public class RagIndexService {
             return 0;
         }
 
+        // 抓取 Markdown 正文
         String text = fetchContent(row.getContentUrl());
         if (!StringUtils.hasText(text)) {
             log.warn("Post {} content empty", postId);
             return 0;
         }
 
+        // 先按 Markdown 标题切段，再做固定长度切片（带重叠）
         List<String> chunks = chunkMarkdown(text);
         // 幂等 upsert：先删除旧切片
         deleteExistingChunks(postId);
 
+        // 组装 Document（文本 + 业务元数据），用于向量写入与检索过滤
         List<Document> docs = new ArrayList<>(chunks.size());
         for (int i = 0; i < chunks.size(); i++) {
             String cid = postId + "#" + i;
@@ -81,14 +97,21 @@ public class RagIndexService {
             docs.add(new Document(chunks.get(i), meta));
         }
         try {
+            // 批量写入向量库
             vectorStore.add(docs);
         } catch (Exception e) {
             log.error("VectorStore add failed: {}", e.getMessage());
             return 0;
         }
+        // 返回本次写入的切片数量
         return docs.size();
     }
 
+    /**
+     * 指纹判断是否需要重建：
+     * - 以 postId 查询任意一条已索引文档的 metadata
+     * - 优先比较 SHA256，其次比较 ETag；一致则视为无需重建
+     */
     private boolean isUpToDate(long postId, String currentSha, String currentEtag) {
         try {
             if (!StringUtils.hasText(esProps.getIndex())) {
@@ -123,6 +146,9 @@ public class RagIndexService {
         }
     }
 
+    /**
+     * 删除旧切片：按 metadata.postId 精确删除，确保 upsert 幂等
+     */
     private void deleteExistingChunks(long postId) {
         try {
             if (!StringUtils.hasText(esProps.getIndex())) return;
@@ -137,9 +163,13 @@ public class RagIndexService {
     }
 
     private static String asString(Object o) {
+        // 统一处理 null → String 的转换
         return o == null ? null : String.valueOf(o);
     }
 
+    /**
+     * 拉取正文内容（Markdown 文本）。
+     */
     private String fetchContent(String url) {
         try {
             return http.getForObject(url, String.class);
@@ -149,13 +179,16 @@ public class RagIndexService {
         }
     }
 
+    /**
+     * 按 Markdown 标题切段，再交由固定长度切片策略处理。
+     */
     private List<String> chunkMarkdown(String text) {
         List<String> paras = new ArrayList<>();
         String[] lines = text.split("\r?\n");
         StringBuilder buf = new StringBuilder();
         for (String line : lines) {
             boolean isHeader = line.startsWith("#");
-            if (isHeader && !buf.isEmpty()) {
+            if (isHeader && !buf.isEmpty()) { // 遇到新的标题，收束上一段
                 paras.add(buf.toString());
                 buf.setLength(0);
             }
@@ -166,6 +199,10 @@ public class RagIndexService {
         return getChunks(paras);
     }
 
+    /**
+     * 固定长度切片（每片 ≤ 800 字符），切片间 100 字符重叠：
+     * - 兼顾检索召回与上下文连续性
+     */
     private static List<String> getChunks(List<String> paras) {
         List<String> chunks = new ArrayList<>();
         for (String p : paras) {
@@ -177,7 +214,7 @@ public class RagIndexService {
                     int end = Math.min(start + 800, p.length());
                     chunks.add(p.substring(start, end));
                     if (end >= p.length()) break;
-                    start = Math.max(end - 100, start + 1);
+                    start = Math.max(end - 100, start + 1); // 重叠 100 字符以保留语义连续
                 }
             }
         }
