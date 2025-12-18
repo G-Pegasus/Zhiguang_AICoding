@@ -3,5 +3,6 @@
   <component name="SqlDialectMappings">
     <file url="file://$PROJECT_DIR$/db/schema.sql" dialect="MySQL" />
     <file url="file://$PROJECT_DIR$/src/main/resources/mapper/KnowPostMapper.xml" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/src/main/resources/mapper/OutboxMapper.xml" dialect="GenericSQL" />
   </component>
 </project>

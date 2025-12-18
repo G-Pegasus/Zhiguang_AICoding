@@ -54,33 +54,35 @@ public class CounterRebuildConsumer {
     }
 
     // 复用与聚合消费者一致的原子计数折叠脚本
-    private static final String INCR_FIELD_LUA = "\n" +
-            "local cntKey = KEYS[1]\n" +
-            "local schemaLen = tonumber(ARGV[1])\n" +
-            "local fieldSize = tonumber(ARGV[2]) -- 固定为4\n" +
-            "local idx = tonumber(ARGV[3])\n" +
-            "local delta = tonumber(ARGV[4])\n" +
-            "\n" +
-            "local function read32be(s, off)\n" +
-            "  local b = {string.byte(s, off+1, off+4)}\n" +
-            "  local n = 0\n" +
-            "  for i=1,4 do n = n * 256 + b[i] end\n" +
-            "  return n\n" +
-            "end\n" +
-            "\n" +
-            "local function write32be(n)\n" +
-            "  local t = {}\n" +
-            "  for i=4,1,-1 do t[i] = n % 256; n = math.floor(n/256) end\n" +
-            "  return string.char(unpack(t))\n" +
-            "end\n" +
-            "\n" +
-            "local cnt = redis.call('GET', cntKey)\n" +
-            "if not cnt then cnt = string.rep(string.char(0), schemaLen * fieldSize) end\n" +
-            "local off = idx * fieldSize\n" +
-            "local v = read32be(cnt, off) + delta\n" +
-            "if v < 0 then v = 0 end\n" +
-            "local seg = write32be(v)\n" +
-            "cnt = string.sub(cnt, 1, off) .. seg .. string.sub(cnt, off+fieldSize+1)\n" +
-            "redis.call('SET', cntKey, cnt)\n" +
-            "return 1\n";
+    private static final String INCR_FIELD_LUA = """
+            
+            local cntKey = KEYS[1]
+            local schemaLen = tonumber(ARGV[1])
+            local fieldSize = tonumber(ARGV[2]) -- 固定为4
+            local idx = tonumber(ARGV[3])
+            local delta = tonumber(ARGV[4])
+            
+            local function read32be(s, off)
+              local b = {string.byte(s, off+1, off+4)}
+              local n = 0
+              for i=1,4 do n = n * 256 + b[i] end
+              return n
+            end
+            
+            local function write32be(n)
+              local t = {}
+              for i=4,1,-1 do t[i] = n % 256; n = math.floor(n/256) end
+              return string.char(unpack(t))
+            end
+            
+            local cnt = redis.call('GET', cntKey)
+            if not cnt then cnt = string.rep(string.char(0), schemaLen * fieldSize) end
+            local off = idx * fieldSize
+            local v = read32be(cnt, off) + delta
+            if v < 0 then v = 0 end
+            local seg = write32be(v)
+            cnt = string.sub(cnt, 1, off) .. seg .. string.sub(cnt, off+fieldSize+1)
+            redis.call('SET', cntKey, cnt)
+            return 1
+            """;
 }

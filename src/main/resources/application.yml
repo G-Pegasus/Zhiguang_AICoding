@@ -79,6 +79,15 @@ canal:
 counter:
   rebuild:
     enabled: false
+    lock:
+      ttl-ms: 5000
+      watchdog-ms: 30000
+    rate:
+      permits: 3
+      window-seconds: 10
+    backoff:
+      base-ms: 500
+      max-ms: 30000
 
 mybatis:
   mapper-locations: classpath*:mapper/*.xml

@@ -9,13 +9,19 @@ import com.tongji.counter.event.CounterEventProducer;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.data.redis.core.types.Expiration;
-import org.springframework.data.redis.connection.RedisStringCommands;
 import org.springframework.stereotype.Service;
 import org.springframework.context.ApplicationEventPublisher;
+import org.redisson.api.RedissonClient;
+import org.redisson.api.RLock;
+import org.redisson.api.RRateLimiter;
+import org.redisson.api.RateType;
+import org.redisson.api.RBucket;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 内容实体计数服务实现（位图事实 + 事件聚合 + SDS 汇总）。
@@ -31,24 +37,30 @@ public class CounterServiceImpl implements CounterService {
     private final StringRedisTemplate redis;
     private final DefaultRedisScript<Long> toggleScript;
     private final CounterEventProducer eventProducer;
-    private final DefaultRedisScript<Long> unlockScript;
     private final ApplicationEventPublisher eventPublisher;
+    private final RedissonClient redisson;
+    @Value("${counter.rebuild.lock.ttl-ms:5000}")
+    private long lockTtlMs;
+    @Value("${counter.rebuild.rate.permits:3}")
+    private int ratePermits;
+    @Value("${counter.rebuild.rate.window-seconds:10}")
+    private int rateWindowSeconds;
+    @Value("${counter.rebuild.backoff.base-ms:500}")
+    private long backoffBaseMs;
+    @Value("${counter.rebuild.backoff.max-ms:30000}")
+    private long backoffMaxMs;
 
-    public CounterServiceImpl(StringRedisTemplate redis, CounterEventProducer eventProducer, ApplicationEventPublisher eventPublisher) {
+    public CounterServiceImpl(StringRedisTemplate redis, CounterEventProducer eventProducer, ApplicationEventPublisher eventPublisher, RedissonClient redisson) {
         this.redis = redis;
         this.eventProducer = eventProducer;
         this.eventPublisher = eventPublisher;
+        this.redisson = redisson;
         this.toggleScript = new DefaultRedisScript<>();
         this.toggleScript.setResultType(Long.class);
         // 位图状态原子切换，仅在状态变化时返回 1
         this.toggleScript.setScriptText(TOGGLE_LUA);
-        this.unlockScript = new DefaultRedisScript<>();
-        this.unlockScript.setResultType(Long.class);
-        // 基于 token 的安全解锁，防误删
-        this.unlockScript.setScriptText(UNLOCK_LUA);
     }
 
-    @Override
     /**
      * 点赞：位图原子置位，仅当状态从未点赞→已点赞时返回 true。
      * 同步路径完成事实层更新后产出增量事件，异步聚合到计数快照。
@@ -57,31 +69,32 @@ public class CounterServiceImpl implements CounterService {
      * @param userId 用户 ID
      * @return 是否发生状态变化（幂等）
      */
+    @Override
     public boolean like(String entityType, String entityId, long userId) {
         return toggle(entityType, entityId, userId, "like", CounterSchema.IDX_LIKE, true);
     }
 
-    @Override
     /**
      * 取消点赞：位图原子清零，仅当状态从已点赞→未点赞时返回 true。
      * 产出增量事件（delta=-1），异步聚合到计数快照。
      */
+    @Override
     public boolean unlike(String entityType, String entityId, long userId) {
         return toggle(entityType, entityId, userId, "like", CounterSchema.IDX_LIKE, false);
     }
 
-    @Override
     /**
      * 收藏：位图原子置位，并产出增量事件（delta=+1）。
      */
+    @Override
     public boolean fav(String entityType, String entityId, long userId) {
         return toggle(entityType, entityId, userId, "fav", CounterSchema.IDX_FAV, true);
     }
 
-    @Override
     /**
      * 取消收藏：位图原子清零，并产出增量事件（delta=-1）。
      */
+    @Override
     public boolean unfav(String entityType, String entityId, long userId) {
         return toggle(entityType, entityId, userId, "fav", CounterSchema.IDX_FAV, false);
     }
@@ -128,13 +141,40 @@ public class CounterServiceImpl implements CounterService {
         boolean needRebuild = (raw == null || raw.length != expectedLen);
 
         Map<String, Long> result = new LinkedHashMap<>();
+
         if (needRebuild) {
-            // 分布式锁避免并发重建：lock:sds-rebuild:{etype}:{eid}
-            String lockKey = String.format("lock:sds-rebuild:%s:%s", entityType, entityId); // 防并发重建
-            String token = UUID.randomUUID().toString();
-            boolean locked = tryLock(lockKey, token, 5000L);
+            // 限流与指数退避：避免在热点实体上触发重建风暴
+            if (inBackoff(entityType, entityId)) {
+                for (String m : metrics) {
+                    result.put(m, 0L);
+                }
+                return result;
+            }
+
+            if (!allowedByRateLimiter(entityType, entityId)) {
+                escalateBackoff(entityType, entityId);
+                for (String m : metrics) {
+                    result.put(m, 0L);
+                }
+                return result;
+            }
+
+            String lockKey = String.format("lock:sds-rebuild:%s:%s", entityType, entityId);
+
+            RLock lock = redisson.getLock(lockKey);
+            boolean locked = false;
+
             try {
-                // 依据位图分片统计真实计数（管道批量 BITCOUNT）
+                // 使用 Redisson 看门狗机制：不指定租期，自动续约（由 Redisson 的 lockWatchdogTimeout 控制）
+                locked = lock.tryLock(0L, TimeUnit.MILLISECONDS);
+                if (!locked) {
+                    escalateBackoff(entityType, entityId);
+                    for (String m : metrics) {
+                        result.put(m, 0L);
+                    }
+                    return result;
+                }
+                // 依据位图分片统计真实计数（仅由持锁者执行重建）
                 byte[] newSds = new byte[expectedLen];
                 List<String> rebuildFields = new ArrayList<>();
                 for (String m : metrics) {
@@ -147,18 +187,25 @@ public class CounterServiceImpl implements CounterService {
                     result.put(m, sum);
                     rebuildFields.add(String.valueOf(idx));
                 }
-                // 仅在拿到锁时回写SDS并清理聚合桶，避免重复加算
-                if (locked) {
-                    setRaw(sdsKey, newSds);
-                    if (!rebuildFields.isEmpty()) {
-                        String aggKey = CounterKeys.aggKey(entityType, entityId);
-                        // 清理对应字段，杜绝重复折叠
-                        redis.opsForHash().delete(aggKey, rebuildFields.toArray());
-                    }
+                // 回写SDS并清理聚合桶，避免重复加算
+                setRaw(sdsKey, newSds);
+                if (!rebuildFields.isEmpty()) {
+                    String aggKey = CounterKeys.aggKey(entityType, entityId);
+                    redis.opsForHash().delete(aggKey, rebuildFields.toArray());
                 }
+                resetBackoff(entityType, entityId);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                escalateBackoff(entityType, entityId);
+                for (String m : metrics) {
+                    result.put(m, 0L);
+                }
+                return result;
             } finally {
                 if (locked) {
-                    unlock(lockKey, token); // 仅持有者释放
+                    try {
+                        lock.unlock();
+                    } catch (Exception ignore) {}
                 }
             }
         } else {
@@ -174,11 +221,6 @@ public class CounterServiceImpl implements CounterService {
     }
 
     /**
-     * 批量获取实体计数汇总（管道批量 GET）。
-     * 缺失或异常结构时补零。
-     */
-    @Override
-    /**
      * 批量获取实体计数（管道批量 GET 降低 RTT）。
      * 缺失或结构异常（长度不符）时按零返回，保证接口稳定。
      * @param entityType 实体类型
@@ -186,9 +228,13 @@ public class CounterServiceImpl implements CounterService {
      * @param metrics 指标名列表
      * @return 每个实体的指标计数映射
      */
+    @Override
     public Map<String, Map<String, Long>> getCountsBatch(String entityType, List<String> entityIds, List<String> metrics) {
         Map<String, Map<String, Long>> out = new LinkedHashMap<>();
-        if (entityIds == null || entityIds.isEmpty() || metrics == null || metrics.isEmpty()) return out;
+        if (entityIds == null || entityIds.isEmpty() || metrics == null || metrics.isEmpty()) {
+            return out;
+        }
+
         List<String> keys = new ArrayList<>(entityIds.size());
         for (String eid : entityIds) {
             keys.add(CounterKeys.sdsKey(entityType, eid));
@@ -201,11 +247,13 @@ public class CounterServiceImpl implements CounterService {
             }
             return null;
         });
+
         int expectedLen = CounterSchema.SCHEMA_LEN * CounterSchema.FIELD_SIZE;
         for (int i = 0; i < entityIds.size(); i++) {
             String eid = entityIds.get(i);
             Object rawObj = i < raws.size() ? raws.get(i) : null;
             byte[] raw = (rawObj instanceof byte[]) ? (byte[]) rawObj : null;
+
             Map<String, Long> m = new LinkedHashMap<>();
             if (raw != null && raw.length == expectedLen) {
                 for (String name : metrics) {
@@ -225,21 +273,21 @@ public class CounterServiceImpl implements CounterService {
         return out;
     }
 
-    @Override
     /**
      * 是否点赞判定：基于分片位图在分片内做位测试。
      * 毫秒级读取，不依赖计数快照。
      */
+    @Override
     public boolean isLiked(String entityType, String entityId, long userId) {
         long chunk = BitmapShard.chunkOf(userId);
         long bit = BitmapShard.bitOf(userId);
         return getBit(CounterKeys.bitmapKey("like", entityType, entityId, chunk), bit);
     }
 
-    @Override
     /**
      * 是否收藏判定：同点赞，基于分片位图位测试。
      */
+    @Override
     public boolean isFaved(String entityType, String entityId, long userId) {
         long chunk = BitmapShard.chunkOf(userId);
         long bit = BitmapShard.bitOf(userId);
@@ -277,27 +325,64 @@ public class CounterServiceImpl implements CounterService {
     }
 
     /**
-     * 尝试加分布式锁（SET NX EX），用于防并发重建。
-     * @param key 锁键
-     * @param token 持有者令牌
-     * @param ttlMillis 锁 TTL（毫秒）
+     * 是否处于指数退避期：期间跳过重建并返回降级结果。
      */
-    private boolean tryLock(String key, String token, long ttlMillis) {
-        Boolean ok = redis.execute((RedisCallback<Boolean>) connection ->
-                connection.stringCommands().set(
-                        key.getBytes(StandardCharsets.UTF_8),
-                        token.getBytes(StandardCharsets.UTF_8),
-                        Expiration.milliseconds(ttlMillis),
-                        RedisStringCommands.SetOption.SET_IF_ABSENT
-                ));
-        return Boolean.TRUE.equals(ok);
+    private boolean inBackoff(String entityType, String entityId) {
+        String bKey = String.format("backoff:sds-rebuild:until:%s:%s", entityType, entityId);
+        RBucket<Long> bucket = redisson.getBucket(bKey);
+        Long until = bucket.get();
+
+        return until != null && System.currentTimeMillis() < until;
     }
 
     /**
-     * 安全释放锁：仅持有者令牌匹配时删除。
+     * 增加退避级别并设置下次允许尝试的时间（指数递增，封顶）。
      */
-    private void unlock(String key, String token) {
-        redis.execute(unlockScript, List.of(key), token);
+    private void escalateBackoff(String entityType, String entityId) {
+        String eKey = String.format("backoff:sds-rebuild:exp:%s:%s", entityType, entityId);
+        String uKey = String.format("backoff:sds-rebuild:until:%s:%s", entityType, entityId);
+
+        RBucket<Integer> expB = redisson.getBucket(eKey);
+        RBucket<Long> untilB = redisson.getBucket(uKey);
+        Integer exp = expB.get();
+
+        int nextExp = Math.min(exp == null ? 0 : exp + 1, 10);
+        long delay = Math.min(backoffBaseMs * (1L << nextExp), backoffMaxMs);
+        long until = System.currentTimeMillis() + delay;
+
+        // 设置过期时间，避免长时间残留
+        expB.set(nextExp);
+        untilB.set(until, Duration.ofMillis(delay + 1000));
+    }
+
+    /**
+     * 重置退避状态（成功重建后）。
+     */
+    private void resetBackoff(String entityType, String entityId) {
+        String eKey = String.format("backoff:sds-rebuild:exp:%s:%s", entityType, entityId);
+        String uKey = String.format("backoff:sds-rebuild:until:%s:%s", entityType, entityId);
+
+        try {
+            redisson.getBucket(eKey).delete();
+        } catch (Exception ignore) {}
+
+        try {
+            redisson.getBucket(uKey).delete();
+        } catch (Exception ignore) {}
+    }
+
+    /**
+     * 限流判断：单位窗口可重建次数，防止抖动与风暴。
+     */
+    private boolean allowedByRateLimiter(String entityType, String entityId) {
+        String rlKey = String.format("rl:sds-rebuild:%s:%s", entityType, entityId);
+        RRateLimiter limiter = redisson.getRateLimiter(rlKey);
+
+        // 初始化速率（如已存在则忽略）
+        limiter.trySetRate(RateType.OVERALL, ratePermits, Duration.ofSeconds(rateWindowSeconds));
+        limiter.trySetRate(RateType.OVERALL, ratePermits, Duration.ofSeconds(rateWindowSeconds));
+
+        return limiter.tryAcquire(1);
     }
 
     /**
@@ -365,14 +450,5 @@ public class CounterServiceImpl implements CounterService {
               return 1
             end
             return -1
-            """;
-
-    // 安全释放锁：仅当持有者token匹配时删除
-    private static final String UNLOCK_LUA = """
-            if redis.call('GET', KEYS[1]) == ARGV[1] then
-              return redis.call('DEL', KEYS[1])
-            else
-              return 0
-            end
             """;
 }
