@@ -28,39 +28,39 @@ public class RelationEventProcessor {
      * @param evt 关系事件
      */
     public void process(RelationEvent evt) {
-        String dk = "dedup:rel:" + evt.getType() + ":" + evt.getFromUserId() + ":" + evt.getToUserId() + ":" + (evt.getId() == null ? "0" : String.valueOf(evt.getId()));
+        String dk = "dedup:rel:" + evt.type() + ":" + evt.fromUserId() + ":" + evt.toUserId() + ":" + (evt.id() == null ? "0" : String.valueOf(evt.id()));
         Boolean first = redis.opsForValue().setIfAbsent(dk, "1", Duration.ofMinutes(10));
 
         // 非首次（存在去重键）直接返回，保证消息幂等
         if (first == null || !first) {
             return;
         }
-        if ("FollowCreated".equals(evt.getType())) {
+        if ("FollowCreated".equals(evt.type())) {
             // 异步插入粉丝表
-            mapper.insertFollower(evt.getId(), evt.getToUserId(), evt.getFromUserId(), 1);
+            mapper.insertFollower(evt.id(), evt.toUserId(), evt.fromUserId(), 1);
             long now = System.currentTimeMillis();
 
             // 更新关注表与粉丝表缓存：ZSet 按时间分数维护最近项，设置短 TTL 减少陈旧数据
-            redis.opsForZSet().add("uf:flws:" + evt.getFromUserId(), String.valueOf(evt.getToUserId()), now);
-            redis.opsForZSet().add("uf:fans:" + evt.getToUserId(), String.valueOf(evt.getFromUserId()), now);
-            redis.expire("uf:flws:" + evt.getFromUserId(), Duration.ofHours(2));
-            redis.expire("uf:fans:" + evt.getToUserId(), Duration.ofHours(2));
+            redis.opsForZSet().add("uf:flws:" + evt.fromUserId(), String.valueOf(evt.toUserId()), now);
+            redis.opsForZSet().add("uf:fans:" + evt.toUserId(), String.valueOf(evt.fromUserId()), now);
+            redis.expire("uf:flws:" + evt.fromUserId(), Duration.ofHours(2));
+            redis.expire("uf:fans:" + evt.toUserId(), Duration.ofHours(2));
 
             // 更新关注数与粉丝数
-            userCounterService.incrementFollowings(evt.getFromUserId(), 1);
-            userCounterService.incrementFollowers(evt.getToUserId(), 1);
-        } else if ("FollowCanceled".equals(evt.getType())) {
-            mapper.cancelFollower(evt.getToUserId(), evt.getFromUserId());
+            userCounterService.incrementFollowings(evt.fromUserId(), 1);
+            userCounterService.incrementFollowers(evt.toUserId(), 1);
+        } else if ("FollowCanceled".equals(evt.type())) {
+            mapper.cancelFollower(evt.toUserId(), evt.fromUserId());
 
             // 更新关注表与粉丝表缓存：移除 ZSet 项并刷新 TTL
-            redis.opsForZSet().remove("uf:flws:" + evt.getFromUserId(), String.valueOf(evt.getToUserId()));
-            redis.opsForZSet().remove("uf:fans:" + evt.getToUserId(), String.valueOf(evt.getFromUserId()));
-            redis.expire("uf:flws:" + evt.getFromUserId(), Duration.ofHours(2));
-            redis.expire("uf:fans:" + evt.getToUserId(), Duration.ofHours(2));
+            redis.opsForZSet().remove("uf:flws:" + evt.fromUserId(), String.valueOf(evt.toUserId()));
+            redis.opsForZSet().remove("uf:fans:" + evt.toUserId(), String.valueOf(evt.fromUserId()));
+            redis.expire("uf:flws:" + evt.fromUserId(), Duration.ofHours(2));
+            redis.expire("uf:fans:" + evt.toUserId(), Duration.ofHours(2));
 
             // 更新关注数与粉丝数
-            userCounterService.incrementFollowings(evt.getFromUserId(), -1);
-            userCounterService.incrementFollowers(evt.getToUserId(), -1);
+            userCounterService.incrementFollowings(evt.fromUserId(), -1);
+            userCounterService.incrementFollowers(evt.toUserId(), -1);
         }
     }
 }
