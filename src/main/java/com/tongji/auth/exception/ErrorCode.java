@@ -1,10 +1,8 @@
 package com.tongji.auth.exception;
 
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 
 @Getter
-@RequiredArgsConstructor
 public enum ErrorCode {
     IDENTIFIER_EXISTS("IDENTIFIER_EXISTS", "账号已存在"),
     IDENTIFIER_NOT_FOUND("IDENTIFIER_NOT_FOUND", "账号不存在"),
@@ -23,4 +21,9 @@ public enum ErrorCode {
 
     private final String code;
     private final String defaultMessage;
+
+    ErrorCode(String code, String defaultMessage) {
+        this.code = code;
+        this.defaultMessage = defaultMessage;
+    }
 }
