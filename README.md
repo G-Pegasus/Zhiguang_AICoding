@@ -4,10 +4,10 @@
 商品详情：https://www.xiaohongshu.com/goods-detail/691f20586ea74e00019b3a3d
 
 # 文档示例
-<div style="display: flex; gap: 15px;">
-  <img src="http://zhiguangapp.oss-cn-beijing.aliyuncs.com/posts/262804640385601536/images/20251226/11a8438f.png" width="330" />
-  <img src="http://zhiguangapp.oss-cn-beijing.aliyuncs.com/posts/262804640385601536/images/20251226/4035ca79.png" width="330" />
-  <img src="http://zhiguangapp.oss-cn-beijing.aliyuncs.com/posts/262804640385601536/images/20251226/40b80f25.png" width="330" />
+<div style="display: flex; gap: 10px;">
+  <img src="http://zhiguangapp.oss-cn-beijing.aliyuncs.com/posts/262804640385601536/images/20251226/11a8438f.png" width="250" />
+  <img src="http://zhiguangapp.oss-cn-beijing.aliyuncs.com/posts/262804640385601536/images/20251226/4035ca79.png" width="250" />
+  <img src="http://zhiguangapp.oss-cn-beijing.aliyuncs.com/posts/262804640385601536/images/20251226/40b80f25.png" width="250" />
 </div>
 
 ![文档1](http://zhiguangapp.oss-cn-beijing.aliyuncs.com/posts/262804640385601536/images/20251226/43eb8fe1.png)
