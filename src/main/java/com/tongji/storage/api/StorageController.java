@@ -1,7 +1,7 @@
 package com.tongji.storage.api;
 
-import com.tongji.auth.exception.BusinessException;
-import com.tongji.auth.exception.ErrorCode;
+import com.tongji.common.exception.BusinessException;
+import com.tongji.common.exception.ErrorCode;
 import com.tongji.auth.token.JwtService;
 import com.tongji.knowpost.mapper.KnowPostMapper;
 import com.tongji.knowpost.model.KnowPost;

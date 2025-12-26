@@ -9,7 +9,7 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import com.tongji.util.OutboxMessageUtil;
+import com.tongji.common.util.OutboxMessageUtil;
 
 /**
  * Canal Outbox 消费者。
@@ -57,4 +57,3 @@ public class CanalOutboxConsumer {
         } catch (Exception ignored) {}
     }
 }
-

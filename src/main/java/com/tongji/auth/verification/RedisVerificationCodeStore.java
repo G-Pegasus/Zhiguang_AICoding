@@ -66,7 +66,7 @@ public class RedisVerificationCodeStore implements VerificationCodeStore {
         String key = buildKey(scene, identifier);
         HashOperations<String, String, String> ops = redisTemplate.opsForHash();
         Map<String, String> data = ops.entries(key);
-        if (data == null || data.isEmpty()) {
+        if (data.isEmpty()) {
             return new VerificationCheckResult(VerificationCodeStatus.NOT_FOUND, 0, 0);
         }
         String storedCode = data.get(FIELD_CODE);

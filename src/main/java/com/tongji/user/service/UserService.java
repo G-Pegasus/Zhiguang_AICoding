@@ -4,7 +4,7 @@ import com.tongji.user.domain.User;
 import java.util.Optional;
 
 /**
- * 用户领域服务接口。
+ * 用户服务接口。
  */
 public interface UserService {
 
