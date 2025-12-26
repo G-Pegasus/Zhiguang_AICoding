@@ -2,8 +2,8 @@ package com.tongji.auth.verification;
 
 import lombok.RequiredArgsConstructor;
 import com.tongji.auth.config.AuthProperties;
-import com.tongji.auth.exception.BusinessException;
-import com.tongji.auth.exception.ErrorCode;
+import com.tongji.common.exception.BusinessException;
+import com.tongji.common.exception.ErrorCode;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;

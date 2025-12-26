@@ -1,4 +1,4 @@
-package com.tongji.auth.exception;
+package com.tongji.common.exception;
 
 import lombok.Getter;
 
@@ -27,3 +27,4 @@ public enum ErrorCode {
         this.defaultMessage = defaultMessage;
     }
 }
+

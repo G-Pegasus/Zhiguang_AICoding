@@ -1,9 +1,9 @@
-package com.tongji.auth.api;
+package com.tongji.common.web;
 
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
-import com.tongji.auth.exception.BusinessException;
-import com.tongji.auth.exception.ErrorCode;
+import com.tongji.common.exception.BusinessException;
+import com.tongji.common.exception.ErrorCode;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -81,3 +81,4 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
 }
+

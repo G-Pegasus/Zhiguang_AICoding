@@ -3,7 +3,7 @@ package com.tongji.search.outbox;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tongji.relation.outbox.OutboxTopics;
-import com.tongji.util.OutboxMessageUtil;
+import com.tongji.common.util.OutboxMessageUtil;
 import com.tongji.search.index.SearchIndexService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.annotation.KafkaListener;

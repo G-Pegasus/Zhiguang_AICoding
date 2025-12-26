@@ -27,6 +27,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import com.tongji.knowpost.model.KnowPostFeedRow;
 
 /**
@@ -169,11 +171,72 @@ public class SearchIndexService {
                 return null;
             }
             MediaType contentType = resp.getHeaders().getContentType();
-            Charset charset = (contentType != null && contentType.getCharset() != null) ? contentType.getCharset() : StandardCharsets.UTF_8;
+            Charset headerCharset = (contentType != null) ? contentType.getCharset() : null;
+            Charset metaCharset = sniffHtmlCharset(bytes);
+            Charset charset = pickCharset(bytes, headerCharset, metaCharset);
             return new String(bytes, charset);
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private Charset pickCharset(byte[] bytes, Charset headerCharset, Charset metaCharset) {
+        if (metaCharset != null) {
+            return metaCharset;
+        }
+        if (headerCharset == null) {
+            Charset utf8 = StandardCharsets.UTF_8;
+            Charset gb18030 = Charset.forName("GB18030");
+            return countReplacementChars(new String(bytes, utf8)) <= countReplacementChars(new String(bytes, gb18030)) ? utf8 : gb18030;
+        }
+        if (isLikelyWrongCharsetHeader(headerCharset)) {
+            Charset utf8 = StandardCharsets.UTF_8;
+            Charset gb18030 = Charset.forName("GB18030");
+            int repUtf8 = countReplacementChars(new String(bytes, utf8));
+            int repGb = countReplacementChars(new String(bytes, gb18030));
+            int repHeader = countReplacementChars(new String(bytes, headerCharset));
+            if (repUtf8 <= repGb && repUtf8 <= repHeader) return utf8;
+            if (repGb <= repHeader) return gb18030;
+        }
+        return headerCharset;
+    }
+
+    private boolean isLikelyWrongCharsetHeader(Charset charset) {
+        return StandardCharsets.ISO_8859_1.equals(charset) || StandardCharsets.US_ASCII.equals(charset);
+    }
+
+    private Charset sniffHtmlCharset(byte[] bytes) {
+        int limit = Math.min(bytes.length, 8192);
+        String head = new String(bytes, 0, limit, StandardCharsets.ISO_8859_1);
+        Matcher m = Pattern.compile("charset\\s*=\\s*['\\\"]?([a-zA-Z0-9_\\-]+)", Pattern.CASE_INSENSITIVE).matcher(head);
+        if (!m.find()) {
+            return null;
+        }
+        String cs = m.group(1);
+        if (cs == null || cs.isBlank()) {
+            return null;
+        }
+        cs = cs.trim();
+        if ("utf8".equalsIgnoreCase(cs)) {
+            return StandardCharsets.UTF_8;
+        }
+        if ("gbk".equalsIgnoreCase(cs) || "gb2312".equalsIgnoreCase(cs) || "gb18030".equalsIgnoreCase(cs)) {
+            return Charset.forName("GB18030");
+        }
+        try {
+            return Charset.forName(cs);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private int countReplacementChars(String s) {
+        if (s == null || s.isEmpty()) return 0;
+        int cnt = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '\uFFFD') cnt++;
+        }
+        return cnt;
     }
 
     /**

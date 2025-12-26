@@ -1,8 +1,8 @@
 package com.tongji.llm.service.impl;
 
 import com.tongji.llm.service.KnowPostDescriptionService;
-import com.tongji.auth.exception.BusinessException;
-import com.tongji.auth.exception.ErrorCode;
+import com.tongji.common.exception.BusinessException;
+import com.tongji.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.deepseek.DeepSeekChatOptions;
